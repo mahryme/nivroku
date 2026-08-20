@@ -1,0 +1,246 @@
+/* NIVROKU home page loader — three-phase object system
+   Phase is driven by one attribute: body[data-loader-phase="loading|exit|hero|card"]
+   No attribute at all (JS never ran) = objects sit inert at loading position with
+   opacity:0 images, .section stays fully visible/interactive. That is the safe default. */
+
+:root {
+  --loader-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --loader-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* ---------- Loader layer ---------- */
+
+.loader-objects {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.loader-obj {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  opacity: 1;
+  transform: translate(-50%, -50%) translate(var(--lx), var(--ly)) rotate(var(--lr)) scale(var(--ls));
+  transition: transform 600ms var(--loader-ease-in-out) var(--loader-stagger, 0ms),
+              opacity 220ms var(--loader-ease-out);
+  pointer-events: none;
+  will-change: transform;
+}
+
+body[data-loader-phase="hero"] .loader-obj {
+  transform: translate(-50%, -50%) translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--hs));
+  transition-duration: 600ms;
+}
+
+body[data-loader-phase="card"] .loader-obj {
+  transform: translate(-50%, -50%) translate(var(--kx), var(--ky)) rotate(var(--kr)) scale(var(--ks));
+  transition-duration: 700ms;
+}
+
+/* Entrance reveal lives on the image, separate from the phase-position transform on
+   .loader-obj, so the two can run on different curves/durations without fighting. */
+.loader-obj > img {
+  opacity: 0;
+  transform: scale(0.86);
+  transition: opacity 420ms var(--loader-ease-out), transform 420ms var(--loader-ease-out);
+  will-change: opacity, transform;
+}
+
+.loader-obj.is-revealed > img {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* ---------- Counter ---------- */
+
+.loader-counter {
+  position: fixed;
+  z-index: 3;
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 200ms var(--loader-ease-out);
+}
+
+body[data-loader-phase="exit"] .loader-counter,
+body[data-loader-phase="hero"] .loader-counter,
+body[data-loader-phase="card"] .loader-counter {
+  opacity: 0;
+}
+
+.loader-bar {
+  width: calc(var(--loader-progress, 0) * 1%);
+  transition: width 150ms linear; /* progress indicator, not motion — width is acceptable here */
+}
+
+/* ---------- Page content ---------- */
+
+.section {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 300ms var(--loader-ease-out);
+}
+
+body[data-loader-phase="loading"] .section,
+body[data-loader-phase="exit"] .section {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Pure-CSS failsafe: unlocks the page ~5s after loading starts,
+   regardless of whether the JS module is still alive. ---------- */
+
+body[data-loader-phase="loading"] .section,
+body[data-loader-phase="exit"] .section {
+  animation: loader-failsafe-show 0s 5s forwards;
+}
+@keyframes loader-failsafe-show {
+  to { opacity: 1; pointer-events: auto; }
+}
+
+body[data-loader-phase="loading"] .loader-objects,
+body[data-loader-phase="loading"] .loader-counter,
+body[data-loader-phase="exit"] .loader-counter {
+  animation: loader-failsafe-hide 0s 5s forwards;
+}
+@keyframes loader-failsafe-hide {
+  to { opacity: 0; visibility: hidden; pointer-events: none; }
+}
+
+/* ==========================================================================
+   Coordinate table — one block per object, desktop then its ≤767px override
+   directly beneath, so the two are easy to compare and hand-tune.
+   --lx/--ly/--lr/--ls  = loading (cluster near center)
+   --hx/--hy/--hr/--hs  = hero (composed around the headline)
+   --kx/--ky/--kr/--ks  = card (composed around the about-card)
+   ALL VALUES BELOW ARE FIRST-PASS PLACEHOLDERS FOR DESIGN REVIEW.
+   ========================================================================== */
+
+[data-obj="1"] { /* agency-logo — anchor mark, largest/most central */
+  --loader-stagger: 0ms;
+  --lx: 0vw;    --ly: -2vh;  --lr: 0deg;  --ls: 0.62;
+  --hx: 0vw;    --hy: -16vh; --hr: 0deg;  --hs: 1;
+  --kx: -22vw;  --ky: -6vh;  --kr: -4deg; --ks: 0.55;
+}
+@media (max-width: 767px) {
+  [data-obj="1"] {
+    --lx: 0vw;   --ly: -1vh;  --lr: 0deg;  --ls: 0.5;
+    --hx: 0vw;   --hy: -10vh; --hr: 0deg;  --hs: 0.8;
+    --kx: -10vw; --ky: -4vh;  --kr: -4deg; --ks: 0.42;
+  }
+}
+
+[data-obj="2"] { /* 044 GARDEN bag */
+  --loader-stagger: 35ms;
+  --lx: -4vw;   --ly: 3vh;   --lr: -6deg; --ls: 0.5;
+  --hx: -24vw;  --hy: 4vh;   --hr: -8deg; --hs: 0.85;
+  --kx: 14vw;   --ky: -10vh; --kr: 6deg;  --ks: 0.42;
+}
+@media (max-width: 767px) {
+  [data-obj="2"] {
+    --lx: -3vw;  --ly: 2vh;  --lr: -6deg; --ls: 0.4;
+    --hx: -16vw; --hy: 2vh;  --hr: -8deg; --hs: 0.62;
+    --kx: 10vw;  --ky: -6vh; --kr: 6deg;  --ks: 0.34;
+  }
+}
+
+[data-obj="3"] { /* spl */
+  --loader-stagger: 70ms;
+  --lx: 5vw;    --ly: -3vh;  --lr: 8deg;  --ls: 0.46;
+  --hx: 22vw;   --hy: -6vh;  --hr: 10deg; --hs: 0.8;
+  --kx: -10vw;  --ky: 10vh;  --kr: -8deg; --ks: 0.4;
+}
+@media (max-width: 767px) {
+  [data-obj="3"] {
+    --lx: 3vw;   --ly: -2vh; --lr: 8deg;  --ls: 0.36;
+    --hx: 14vw;  --hy: -4vh; --hr: 10deg; --hs: 0.58;
+    --kx: -8vw;  --ky: 6vh;  --kr: -8deg; --ks: 0.3;
+  }
+}
+
+[data-obj="4"] { /* okko-pulls */
+  --loader-stagger: 105ms;
+  --lx: -6vw;   --ly: -4vh;  --lr: -10deg; --ls: 0.5;
+  --hx: -30vw;  --hy: -14vh; --hr: -6deg;  --hs: 0.78;
+  --kx: 20vw;   --ky: 6vh;   --kr: 4deg;   --ks: 0.44;
+}
+@media (max-width: 767px) {
+  [data-obj="4"] {
+    --lx: -4vw;  --ly: -3vh;  --lr: -10deg; --ls: 0.4;
+    --hx: -18vw; --hy: -10vh; --hr: -6deg;  --hs: 0.6;
+    --kx: 12vw;  --ky: 4vh;   --kr: 4deg;   --ks: 0.32;
+  }
+}
+
+[data-obj="5"] { /* solmar-gum — dropped on mobile */
+  --loader-stagger: 140ms;
+  --lx: 6vw;    --ly: 4vh;   --lr: 12deg; --ls: 0.44;
+  --hx: 28vw;   --hy: 12vh;  --hr: 8deg;  --hs: 0.75;
+  --kx: -16vw;  --ky: -12vh; --kr: -10deg; --ks: 0.38;
+}
+@media (max-width: 767px) {
+  [data-obj="5"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+[data-obj="6"] { /* mhp */
+  --loader-stagger: 175ms;
+  --lx: -3vw;  --ly: 6vh;   --lr: -4deg; --ls: 0.48;
+  --hx: -14vw; --hy: 20vh;  --hr: -4deg; --hs: 0.7;
+  --kx: 8vw;   --ky: 16vh;  --kr: 6deg;  --ks: 0.4;
+}
+@media (max-width: 767px) {
+  [data-obj="6"] {
+    --lx: -2vw; --ly: 4vh;  --lr: -4deg; --ls: 0.38;
+    --hx: -8vw; --hy: 14vh; --hr: -4deg; --hs: 0.5;
+    --kx: 6vw;  --ky: 10vh; --kr: 6deg;  --ks: 0.3;
+  }
+}
+
+[data-obj="7"] { /* unico */
+  --loader-stagger: 210ms;
+  --lx: 4vw;   --ly: -6vh;  --lr: 6deg;  --ls: 0.46;
+  --hx: 16vw;  --hy: -20vh; --hr: 4deg;  --hs: 0.7;
+  --kx: -6vw;  --ky: -18vh; --kr: -6deg; --ks: 0.38;
+}
+@media (max-width: 767px) {
+  [data-obj="7"] {
+    --lx: 3vw;  --ly: -4vh;  --lr: 6deg;  --ls: 0.36;
+    --hx: 10vw; --hy: -14vh; --hr: 4deg;  --hs: 0.5;
+    --kx: -4vw; --ky: -10vh; --kr: -6deg; --ks: 0.28;
+  }
+}
+
+[data-obj="8"] { /* solmar-gummies — dropped on mobile */
+  --loader-stagger: 245ms;
+  --lx: 0vw;  --ly: 7vh;   --lr: 0deg;  --ls: 0.5;
+  --hx: 0vw;  --hy: 24vh;  --hr: 0deg;  --hs: 0.72;
+  --kx: 0vw;  --ky: 20vh;  --kr: 0deg;  --ks: 0.4;
+}
+@media (max-width: 767px) {
+  [data-obj="8"] {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* ---------- Reduced motion: fewer + gentler, never zero ----------
+   No positional movement at all — transform is dropped from the transition
+   list so phase changes snap instantly, then a brief opacity dip/return
+   (driven by JS toggling .is-phase-fading) stands in for the move. */
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-obj {
+    transition: opacity 220ms var(--loader-ease-out);
+  }
+  .loader-obj > img {
+    transform: none;
+    transition: opacity 220ms var(--loader-ease-out);
+  }
+  .loader-objects.is-phase-fading .loader-obj {
+    opacity: 0;
+  }
+}
