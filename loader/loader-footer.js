@@ -73,6 +73,43 @@
         }, BEAT);
     }
 
+    // Firefox fallback for the card's scroll-driven peek/settle (see
+    // loader-head.css) — Chrome/Edge/Safari handle it purely in CSS via
+    // animation-timeline: scroll(root) and never enter this branch.
+    // PEEK_Y/PULL must match --card-peek-y's default and --card-pull in
+    // loader-head.css — translateY has to land on +PULL (not 0) at
+    // completion to cancel the card's own negative margin-top and settle it
+    // at its true Designer position, not permanently elevated.
+    function initCardScrollFallback() {
+        var PEEK_Y = 12, PULL = 15, PEEK_R = -5;
+        var supportsScrollTimeline =
+            window.CSS &&
+            CSS.supports &&
+            CSS.supports("animation-timeline: scroll()");
+        if (!cardEl || reduceMotion || supportsScrollTimeline) return;
+        var range = window.innerHeight * 0.9; // matches animation-range: 0dvh 90dvh
+        var ticking = false;
+        function update() {
+            ticking = false;
+            var progress = Math.min(1, Math.max(0, window.scrollY / range));
+            cardEl.style.setProperty("--card-peek-y", PEEK_Y + (PULL - PEEK_Y) * progress + "vh");
+            cardEl.style.setProperty("--card-peek-r", PEEK_R * (1 - progress) + "deg");
+        }
+        function onScroll() {
+            if (!ticking) {
+                ticking = true;
+                window.requestAnimationFrame(update);
+            }
+        }
+        window.addEventListener("scroll", onScroll, { passive: true });
+        window.addEventListener("resize", function () {
+            range = window.innerHeight * 0.9;
+            update();
+        });
+        update();
+    }
+    initCardScrollFallback();
+
     body.setAttribute("data-loader-phase", "loading");
     var ceilingTimer = window.setTimeout(finish, CEILING);
 

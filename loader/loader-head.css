@@ -1,14 +1,21 @@
 /* NIVROKU home page loader — three-phase object system
    Phase is driven by one attribute: body[data-loader-phase="loading|exit|hero|card"]
    No attribute at all (JS never ran) = objects sit inert at loading position with
-   opacity:0 images, .section stays fully visible/interactive. That is the safe default. */
+   opacity:0 images, .section AND .header-wrap stay fully visible/interactive.
+   That is the safe default.
+
+   Round 2 note: this file was reconciled from the hand-edited version pasted
+   directly into Webflow's head custom code (which had drifted from this repo's
+   v0.1.0 tag — width via --loader-obj-size, .header-wrap folded into the
+   reveal/hide logic, loader-bar/counter layout tweaks). That reconciled base is
+   what Task A's coordinate-table principles and Task B's card motion are
+   applied on top of below. */
 
 :root {
   --loader-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --loader-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --loader-obj-size: clamp(64px, 9vw, 168px);
 }
-
-/* ---------- Loader layer ---------- */
 
 .loader-objects {
   position: fixed;
@@ -21,12 +28,19 @@
   position: fixed;
   top: 50%;
   left: 50%;
+  width: var(--loader-obj-size);
   opacity: 1;
   transform: translate(-50%, -50%) translate(var(--lx), var(--ly)) rotate(var(--lr)) scale(var(--ls));
   transition: transform 600ms var(--loader-ease-in-out) var(--loader-stagger, 0ms),
               opacity 220ms var(--loader-ease-out);
   pointer-events: none;
   will-change: transform;
+}
+
+.loader-obj img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 body[data-loader-phase="hero"] .loader-obj {
@@ -39,8 +53,6 @@ body[data-loader-phase="card"] .loader-obj {
   transition-duration: 700ms;
 }
 
-/* Entrance reveal lives on the image, separate from the phase-position transform on
-   .loader-obj, so the two can run on different curves/durations without fighting. */
 .loader-obj > img {
   opacity: 0;
   transform: scale(0.86);
@@ -53,11 +65,11 @@ body[data-loader-phase="card"] .loader-obj {
   transform: scale(1);
 }
 
-/* ---------- Counter ---------- */
-
 .loader-counter {
   position: fixed;
   z-index: 3;
+  display: flex;
+  align-items: baseline;
   opacity: 1;
   pointer-events: none;
   transition: opacity 200ms var(--loader-ease-out);
@@ -71,28 +83,30 @@ body[data-loader-phase="card"] .loader-counter {
 
 .loader-bar {
   width: calc(var(--loader-progress, 0) * 1%);
-  transition: width 150ms linear; /* progress indicator, not motion — width is acceptable here */
+  height: 1px;
+  overflow: hidden;
+  transition: width 150ms linear;
 }
 
-/* ---------- Page content ---------- */
-
-.section {
+.section,
+.header-wrap {
   opacity: 1;
   pointer-events: auto;
   transition: opacity 300ms var(--loader-ease-out);
 }
 
 body[data-loader-phase="loading"] .section,
-body[data-loader-phase="exit"] .section {
+body[data-loader-phase="exit"] .section,
+body[data-loader-phase="loading"] .header-wrap,
+body[data-loader-phase="exit"] .header-wrap {
   opacity: 0;
   pointer-events: none;
 }
 
-/* ---------- Pure-CSS failsafe: unlocks the page ~5s after loading starts,
-   regardless of whether the JS module is still alive. ---------- */
-
 body[data-loader-phase="loading"] .section,
-body[data-loader-phase="exit"] .section {
+body[data-loader-phase="exit"] .section,
+body[data-loader-phase="loading"] .header-wrap,
+body[data-loader-phase="exit"] .header-wrap {
   animation: loader-failsafe-show 0s 5s forwards;
 }
 @keyframes loader-failsafe-show {
@@ -110,74 +124,89 @@ body[data-loader-phase="exit"] .loader-counter {
 
 /* ==========================================================================
    Coordinate table — one block per object, desktop then its ≤767px override
-   directly beneath, so the two are easy to compare and hand-tune.
-   --lx/--ly/--lr/--ls  = loading (cluster near center)
+   directly beneath.
+   --lx/--ly/--lr/--ls  = loading (cluster, arriving)
    --hx/--hy/--hr/--hs  = hero (composed around the headline)
-   --kx/--ky/--kr/--ks  = card (composed around the about-card)
-   ALL VALUES BELOW ARE FIRST-PASS PLACEHOLDERS FOR DESIGN REVIEW.
+   --kx/--ky/--kr/--ks  = card (composed around the about-card) — UNCHANGED
+     this round; Task A only scoped loading + hero.
+
+   Round-2 principles applied to every object below (see report for the
+   per-object violation each fix addresses):
+   1. Loading position is now 58–65% of the way toward hero position, not a
+      near-center cluster — the set gets fuller, not relocated. Loading scale
+      is ~75% of hero scale so there's still a sense of "arriving" (object 1
+      is the documented exception — see its comment).
+   2. Hero --hy is positive for every object (15–39vh, already true in the
+      deployed version and left alone). Two objects — 1 and 2 — now cross
+      ±50vw so they're deliberately cropped by the viewport edge; the rest
+      stay comfortably inside frame.
+   3. agency-logo (object 1) is the anchor: large and alone at low counts
+      (--ls stays ~1.05, exceeding the general "loading < hero" rule on
+      purpose), calming to a smaller --hs as it recedes toward the widest
+      hero edge position of any object.
    ========================================================================== */
 
-[data-obj="1"] { /* agency-logo — anchor mark, largest/most central */
+[data-obj="1"] { /* agency-logo — anchor: big alone, recedes to the far edge */
   --loader-stagger: 0ms;
-  --lx: 0vw;    --ly: -2vh;  --lr: 0deg;  --ls: 0.62;
-  --hx: 0vw;    --hy: -16vh; --hr: 0deg;  --hs: 1;
-  --kx: -22vw;  --ky: -6vh;  --kr: -4deg; --ks: 0.55;
+  --lx: -36vw; --ly: 16vh; --lr: 0deg; --ls: 1.05;
+  --hx: -56vw; --hy: 27vh; --hr: 0deg; --hs: 0.85;
+  --kx: -30vw; --ky: 22vh; --kr: 0deg; --ks: 1.0;
 }
 @media (max-width: 767px) {
   [data-obj="1"] {
-    --lx: 0vw;   --ly: -1vh;  --lr: 0deg;  --ls: 0.5;
-    --hx: 0vw;   --hy: -10vh; --hr: 0deg;  --hs: 0.8;
-    --kx: -10vw; --ky: -4vh;  --kr: -4deg; --ks: 0.42;
+    --lx: -21vw; --ly: 11vh; --lr: 0deg; --ls: 0.75;
+    --hx: -34vw; --hy: 18vh; --hr: 0deg; --hs: 0.6;
+    --kx: -14vw; --ky: 14vh; --kr: 0deg; --ks: 0.7;
   }
 }
 
-[data-obj="2"] { /* 044 GARDEN bag */
+[data-obj="2"] { /* 044 GARDEN bag — 2nd edge-cropper */
   --loader-stagger: 35ms;
-  --lx: -4vw;   --ly: 3vh;   --lr: -6deg; --ls: 0.5;
-  --hx: -24vw;  --hy: 4vh;   --hr: -8deg; --hs: 0.85;
-  --kx: 14vw;   --ky: -10vh; --kr: 6deg;  --ks: 0.42;
+  --lx: 33vw; --ly: 19vh; --lr: -3deg; --ls: 0.86;
+  --hx: 54vw; --hy: 31vh; --hr: -3deg; --hs: 1.15;
+  --kx: 40vw; --ky: 18vh; --kr: -3deg; --ks: 1.15;
 }
 @media (max-width: 767px) {
   [data-obj="2"] {
-    --lx: -3vw;  --ly: 2vh;  --lr: -6deg; --ls: 0.4;
-    --hx: -16vw; --hy: 2vh;  --hr: -8deg; --hs: 0.62;
-    --kx: 10vw;  --ky: -6vh; --kr: 6deg;  --ks: 0.34;
+    --lx: 14vw; --ly: 12vh; --lr: -3deg; --ls: 0.6;
+    --hx: 22vw; --hy: 20vh; --hr: -3deg; --hs: 0.8;
+    --kx: 20vw; --ky: 12vh; --kr: -3deg; --ks: 0.8;
   }
 }
 
 [data-obj="3"] { /* spl */
   --loader-stagger: 70ms;
-  --lx: 5vw;    --ly: -3vh;  --lr: 8deg;  --ls: 0.46;
-  --hx: 22vw;   --hy: -6vh;  --hr: 10deg; --hs: 0.8;
-  --kx: -10vw;  --ky: 10vh;  --kr: -8deg; --ks: 0.4;
+  --lx: 24vw; --ly: 15vh; --lr: 4deg; --ls: 0.59;
+  --hx: 39vw; --hy: 24vh; --hr: 4deg; --hs: 0.78;
+  --kx: 38vw; --ky: 13vh; --kr: 4deg; --ks: 0.78;
 }
 @media (max-width: 767px) {
   [data-obj="3"] {
-    --lx: 3vw;   --ly: -2vh; --lr: 8deg;  --ls: 0.36;
-    --hx: 14vw;  --hy: -4vh; --hr: 10deg; --hs: 0.58;
-    --kx: -8vw;  --ky: 6vh;  --kr: -8deg; --ks: 0.3;
+    --lx: 7vw;  --ly: 9vh;  --lr: 4deg; --ls: 0.42;
+    --hx: 12vw; --hy: 15vh; --hr: 4deg; --hs: 0.56;
+    --kx: 12vw; --ky: 9vh;  --kr: 4deg; --ks: 0.56;
   }
 }
 
 [data-obj="4"] { /* okko-pulls */
   --loader-stagger: 105ms;
-  --lx: -6vw;   --ly: -4vh;  --lr: -10deg; --ls: 0.5;
-  --hx: -30vw;  --hy: -14vh; --hr: -6deg;  --hs: 0.78;
-  --kx: 20vw;   --ky: 6vh;   --kr: 4deg;   --ks: 0.44;
+  --lx: 0vw;   --ly: 18vh; --lr: 3deg; --ls: 0.69;
+  --hx: -1vw;  --hy: 28vh; --hr: 3deg; --hs: 0.92;
+  --kx: -24vw; --ky: 28vh; --kr: 3deg; --ks: 0.92;
 }
 @media (max-width: 767px) {
   [data-obj="4"] {
-    --lx: -4vw;  --ly: -3vh;  --lr: -10deg; --ls: 0.4;
-    --hx: -18vw; --hy: -10vh; --hr: -6deg;  --hs: 0.6;
-    --kx: 12vw;  --ky: 4vh;   --kr: 4deg;   --ks: 0.32;
+    --lx: 0vw;   --ly: 11vh; --lr: 3deg; --ls: 0.47;
+    --hx: 0vw;   --hy: 18vh; --hr: 3deg; --hs: 0.62;
+    --kx: -14vw; --ky: 18vh; --kr: 3deg; --ks: 0.62;
   }
 }
 
 [data-obj="5"] { /* solmar-gum — dropped on mobile */
   --loader-stagger: 140ms;
-  --lx: 6vw;    --ly: 4vh;   --lr: 12deg; --ls: 0.44;
-  --hx: 28vw;   --hy: 12vh;  --hr: 8deg;  --hs: 0.75;
-  --kx: -16vw;  --ky: -12vh; --kr: -10deg; --ks: 0.38;
+  --lx: 17vw; --ly: 19vh; --lr: -4deg; --ls: 0.59;
+  --hx: 28vw; --hy: 31vh; --hr: -4deg; --hs: 0.78;
+  --kx: 42vw; --ky: 26vh; --kr: -4deg; --ks: 0.78;
 }
 @media (max-width: 767px) {
   [data-obj="5"] {
@@ -188,37 +217,37 @@ body[data-loader-phase="exit"] .loader-counter {
 
 [data-obj="6"] { /* mhp */
   --loader-stagger: 175ms;
-  --lx: -3vw;  --ly: 6vh;   --lr: -4deg; --ls: 0.48;
-  --hx: -14vw; --hy: 20vh;  --hr: -4deg; --hs: 0.7;
-  --kx: 8vw;   --ky: 16vh;  --kr: 6deg;  --ks: 0.4;
+  --lx: -26vw; --ly: 21vh; --lr: -2deg; --ls: 0.74;
+  --hx: -42vw; --hy: 35vh; --hr: -2deg; --hs: 0.98;
+  --kx: -40vw; --ky: 10vh; --kr: -2deg; --ks: 0.82;
 }
 @media (max-width: 767px) {
   [data-obj="6"] {
-    --lx: -2vw; --ly: 4vh;  --lr: -4deg; --ls: 0.38;
-    --hx: -8vw; --hy: 14vh; --hr: -4deg; --hs: 0.5;
-    --kx: 6vw;  --ky: 10vh; --kr: 6deg;  --ks: 0.3;
+    --lx: -11vw; --ly: 13vh; --lr: -2deg; --ls: 0.45;
+    --hx: -18vw; --hy: 22vh; --hr: -2deg; --hs: 0.6;
+    --kx: -16vw; --ky: 8vh;  --kr: -2deg; --ks: 0.54;
   }
 }
 
 [data-obj="7"] { /* unico */
   --loader-stagger: 210ms;
-  --lx: 4vw;   --ly: -6vh;  --lr: 6deg;  --ls: 0.46;
-  --hx: 16vw;  --hy: -20vh; --hr: 4deg;  --hs: 0.7;
-  --kx: -6vw;  --ky: -18vh; --kr: -6deg; --ks: 0.38;
+  --lx: 17vw; --ly: 16vh; --lr: 3deg; --ls: 0.74;
+  --hx: 26vw; --hy: 27vh; --hr: 3deg; --hs: 0.98;
+  --kx: 30vw; --ky: 18vh; --kr: 3deg; --ks: 0.98;
 }
 @media (max-width: 767px) {
   [data-obj="7"] {
-    --lx: 3vw;  --ly: -4vh;  --lr: 6deg;  --ls: 0.36;
-    --hx: 10vw; --hy: -14vh; --hr: 4deg;  --hs: 0.5;
-    --kx: -4vw; --ky: -10vh; --kr: -6deg; --ks: 0.28;
+    --lx: 9vw;  --ly: 11vh; --lr: 3deg; --ls: 0.47;
+    --hx: 14vw; --hy: 18vh; --hr: 3deg; --hs: 0.62;
+    --kx: 16vw; --ky: 12vh; --kr: 3deg; --ks: 0.62;
   }
 }
 
 [data-obj="8"] { /* solmar-gummies — dropped on mobile */
   --loader-stagger: 245ms;
-  --lx: 0vw;  --ly: 7vh;   --lr: 0deg;  --ls: 0.5;
-  --hx: 0vw;  --hy: 24vh;  --hr: 0deg;  --hs: 0.72;
-  --kx: 0vw;  --ky: 20vh;  --kr: 0deg;  --ks: 0.4;
+  --lx: -11vw; --ly: 26vh; --lr: -3deg; --ls: 0.92;
+  --hx: -18vw; --hy: 39vh; --hr: -3deg; --hs: 1.22;
+  --kx: -38vw; --ky: 36vh; --kr: -3deg; --ks: 1.22;
 }
 @media (max-width: 767px) {
   [data-obj="8"] {
@@ -226,11 +255,6 @@ body[data-loader-phase="exit"] .loader-counter {
     pointer-events: none;
   }
 }
-
-/* ---------- Reduced motion: fewer + gentler, never zero ----------
-   No positional movement at all — transform is dropped from the transition
-   list so phase changes snap instantly, then a brief opacity dip/return
-   (driven by JS toggling .is-phase-fading) stands in for the move. */
 
 @media (prefers-reduced-motion: reduce) {
   .loader-obj {
@@ -242,5 +266,59 @@ body[data-loader-phase="exit"] .loader-counter {
   }
   .loader-objects.is-phase-fading .loader-obj {
     opacity: 0;
+  }
+}
+
+/* ==========================================================================
+   Card — scroll-driven peek → straighten → settle (Task B)
+   Continuous, tied to absolute scroll position via scroll(root) — NOT the
+   discrete hero/card phase switch above, which still governs the objects.
+   Verified: both .container-2.is--full-screen sections (hero and the card's
+   wrapper) are exactly 100dvh (min-height/max-height, Designer-set), so
+   0dvh–90dvh is grounded in that real measurement, not a guess — it
+   completes within the hero section's own scroll span, comfortably before
+   the card's own 45% IntersectionObserver threshold (which can't fire
+   before the user has scrolled past the full 100dvh hero section and partway
+   into the second one).
+   ========================================================================== */
+
+[data-home="card"] {
+  /* --card-pull is the single number that governs both how far the card is
+     pulled out of flow (margin-top) and how far the settle transform has to
+     travel to land it back at that exact flow position (translateY ends at
+     +pull, not 0 — a plain margin-top with no counter-translate would leave
+     the card permanently elevated instead of "at the position it already
+     occupies today in Designer"). Change this one value to retune the peek. */
+  --card-pull: 15vh;
+  margin-top: calc(-1 * var(--card-pull));
+}
+
+@keyframes card-settle {
+  from { transform: translateY(var(--card-peek-y, 12vh)) rotate(var(--card-peek-r, -5deg)); }
+  to   { transform: translateY(var(--card-pull)) rotate(0deg); }
+}
+
+/* Primary: Chrome/Edge/Safari — compositor-driven, no JS involved. */
+@supports (animation-timeline: scroll()) {
+  [data-home="card"] {
+    animation: card-settle linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0dvh 90dvh;
+  }
+}
+
+/* Fallback: Firefox — same transform, driven by JS-set custom properties
+   (see loader-footer.js) instead of a compositor scroll timeline. JS
+   interpolates --card-peek-y from 12vh at rest to --card-pull at completion. */
+@supports not (animation-timeline: scroll()) {
+  [data-home="card"] {
+    transform: translateY(var(--card-peek-y, 12vh)) rotate(var(--card-peek-r, -5deg));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-home="card"] {
+    animation: none;
+    transform: translateY(var(--card-pull)); /* settled — no peek, no rotation */
   }
 }
