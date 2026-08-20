@@ -7,7 +7,7 @@
     var objects = Array.prototype.slice.call(
         document.querySelectorAll(".loader-obj"),
     );
-    var bar = document.querySelector(".loader-bar");
+    var bar = document.querySelector('[data-loader="bar"]');
     var countEl = document.querySelector('[data-loader="count"]');
     var cardEl = document.querySelector('[data-home="card"]');
     var reduceMotion = window.matchMedia(

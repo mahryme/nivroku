@@ -81,12 +81,8 @@ body[data-loader-phase="card"] .loader-counter {
   opacity: 0;
 }
 
-.loader-bar {
-  /* Was `calc(var(--loader-progress,0) * 1%)` — percentage of a shrink-to-fit
-     parent (.loader-counter has no explicit width) is an indefinite containing
-     block, so the percentage resolved to nothing. Fixed px-per-percent avoids
-     the dependency entirely: 0–100 maps to 0–120px, regardless of parent sizing. */
-  width: calc(var(--loader-progress, 0) * 1.2px);
+[data-loader="bar"] {
+  width: calc(var(--loader-progress, 0) * 1%);
   height: 1px;
   overflow: hidden;
   transition: width 150ms linear;
