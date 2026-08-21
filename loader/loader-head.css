@@ -92,16 +92,20 @@
    once phase reaches hero so leg 2's transition can take over cleanly. */
 @keyframes obj-load {
     0% {
-        transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r)) scale(var(--scale, 1));
+        transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r))
+            scale(var(--scale, 1));
     }
     40% {
-        transform: translate(var(--l2x), var(--l2y)) rotate(var(--l2r)) scale(var(--scale, 1));
+        transform: translate(var(--l2x), var(--l2y)) rotate(var(--l2r))
+            scale(var(--scale, 1));
     }
     60% {
-        transform: translate(var(--l3x), var(--l3y)) rotate(var(--l3r)) scale(var(--scale, 1));
+        transform: translate(var(--l3x), var(--l3y)) rotate(var(--l3r))
+            scale(var(--scale, 1));
     }
     100% {
-        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r)) scale(var(--scale, 1));
+        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r))
+            scale(var(--scale, 1));
     }
 }
 
@@ -119,7 +123,8 @@ body:not([data-loader-phase="hero"]) .loader-obj {
 
 /* Leg 2 — discrete settle onto the hero composition. */
 body[data-loader-phase="hero"] .loader-obj {
-    transform: translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--scale, 1));
+    transform: translate(var(--hx), var(--hy)) rotate(var(--hr))
+        scale(var(--scale, 1));
 }
 
 /* Leg 3 — hero → card, continuous scroll(root), identical range to the
@@ -127,10 +132,12 @@ body[data-loader-phase="hero"] .loader-obj {
    --obj-scroll-x/-y/-r (see loader-footer.js). */
 @keyframes obj-settle {
     from {
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--scale, 1));
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr))
+            scale(var(--scale, 1));
     }
     to {
-        transform: translate(var(--kx), var(--ky)) rotate(var(--kr)) scale(var(--scale, 1));
+        transform: translate(var(--kx), var(--ky)) rotate(var(--kr))
+            scale(var(--scale, 1));
     }
 }
 
@@ -149,8 +156,7 @@ body[data-loader-phase="hero"] .loader-obj {
                 var(--obj-scroll-x, var(--hx)),
                 var(--obj-scroll-y, var(--hy))
             )
-            rotate(var(--obj-scroll-r, var(--hr)))
-            scale(var(--scale, 1));
+            rotate(var(--obj-scroll-r, var(--hr))) scale(var(--scale, 1));
         transition: none;
     }
 }
@@ -285,8 +291,8 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: -4vw;
     --l4y: -40vh;
     --l4r: -30deg;
-    --hx: -4vw;
-    --hy: -8vh;
+    --hx: -2vw;
+    --hy: -12vh;
     --hr: -30deg;
     --kx: 12vw;
     --ky: -16vh;
@@ -311,7 +317,7 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4r: 0deg;
     --hx: 56vw;
     --hy: 8vh;
-    --hr: 0deg;
+    --hr: 15deg;
     --kx: 72vw;
     --ky: 12vh;
     --kr: 0deg;
@@ -383,8 +389,8 @@ body[data-loader-phase="exit"] .loader-counter {
     --hx: 72vw;
     --hy: 12vh;
     --hr: 0deg;
-    --kx: 88vw;
-    --ky: 8vh;
+    --kx: 82vw;
+    --ky: -2vh;
     --kr: 0deg;
 }
 
@@ -406,7 +412,7 @@ body[data-loader-phase="exit"] .loader-counter {
     --hx: -2vw;
     --hy: 4vh;
     --hr: -15deg;
-    --kx: 0vw;
+    --kx: 8vw;
     --ky: -20vh;
     --kr: 0deg;
 }
@@ -429,8 +435,8 @@ body[data-loader-phase="exit"] .loader-counter {
     --hx: 68vw;
     --hy: 0vh;
     --hr: -15deg;
-    --kx: 72vw;
-    --ky: -16vh;
+    --kx: 70vw;
+    --ky: -12vh;
     --kr: -15deg;
 }
 
@@ -450,11 +456,11 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 0vw;
     --l4y: -12vh;
     --l4r: -15deg;
-    --hx: 24vw;
-    --hy: 20vh;
+    --hx: 20vw;
+    --hy: 12vh;
     --hr: -15deg;
-    --kx: 0vw;
-    --ky: 16vh;
+    --kx: 6vw;
+    --ky: 8vh;
     --kr: -15deg;
 }
 
@@ -468,7 +474,8 @@ body[data-loader-phase="exit"] .loader-counter {
 @media (prefers-reduced-motion: reduce) {
     .loader-obj {
         animation: none !important;
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--scale, 1));
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr))
+            scale(var(--scale, 1));
         transition: opacity 220ms var(--loader-ease-out);
     }
     .loader-obj > img {
@@ -495,7 +502,7 @@ body[data-loader-phase="exit"] .loader-counter {
 @keyframes card-settle {
     from {
         transform: rotate(var(--card-peek-r, 30deg))
-            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -8vh));
+            translate(var(--card-peek-x, -28vw), var(--card-peek-y, -6vh));
     }
     to {
         transform: rotate(0deg) translate(0, 0);
@@ -516,7 +523,7 @@ body[data-loader-phase="exit"] .loader-counter {
 @supports not (animation-timeline: scroll()) {
     [data-home="card"] {
         transform: rotate(var(--card-peek-r, 30deg))
-            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -8vh));
+            translate(var(--card-peek-x, -28vw), var(--card-peek-y, -6vh));
     }
 }
 

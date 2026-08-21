@@ -85,7 +85,7 @@
     // START_* must match the keyframe's `from` defaults in loader-head.css;
     // all three interpolate down to 0 (rotate/x/y) as progress reaches 1.
     function initCardScrollFallback() {
-        var START_R = 30, START_X = -24, START_Y = -16;
+        var START_R = 30, START_X = -28, START_Y = -6;
         var supportsScrollTimeline =
             window.CSS &&
             CSS.supports &&
