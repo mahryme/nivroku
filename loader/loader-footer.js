@@ -73,15 +73,13 @@
         }, BEAT);
     }
 
-    // Firefox fallback for the card's scroll-driven peek/settle (see
+    // Firefox fallback for the card's scroll-driven settle (see
     // loader-head.css) — Chrome/Edge/Safari handle it purely in CSS via
     // animation-timeline: scroll(root) and never enter this branch.
-    // PEEK_Y/PULL must match --card-peek-y's default and --card-pull in
-    // loader-head.css — translateY has to land on +PULL (not 0) at
-    // completion to cancel the card's own negative margin-top and settle it
-    // at its true Designer position, not permanently elevated.
+    // START_* must match the keyframe's `from` defaults in loader-head.css;
+    // all three interpolate down to 0 (rotate/x/y) as progress reaches 1.
     function initCardScrollFallback() {
-        var PEEK_Y = 12, PULL = 15, PEEK_R = -5;
+        var START_R = 30, START_X = -24, START_Y = -16;
         var supportsScrollTimeline =
             window.CSS &&
             CSS.supports &&
@@ -92,8 +90,10 @@
         function update() {
             ticking = false;
             var progress = Math.min(1, Math.max(0, window.scrollY / range));
-            cardEl.style.setProperty("--card-peek-y", PEEK_Y + (PULL - PEEK_Y) * progress + "vh");
-            cardEl.style.setProperty("--card-peek-r", PEEK_R * (1 - progress) + "deg");
+            var remaining = 1 - progress;
+            cardEl.style.setProperty("--card-peek-r", START_R * remaining + "deg");
+            cardEl.style.setProperty("--card-peek-x", START_X * remaining + "vw");
+            cardEl.style.setProperty("--card-peek-y", START_Y * remaining + "vh");
         }
         function onScroll() {
             if (!ticking) {

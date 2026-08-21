@@ -270,32 +270,20 @@ body[data-loader-phase="exit"] .loader-counter {
 }
 
 /* ==========================================================================
-   Card — scroll-driven peek → straighten → settle (Task B)
-   Continuous, tied to absolute scroll position via scroll(root) — NOT the
-   discrete hero/card phase switch above, which still governs the objects.
-   Verified: both .container-2.is--full-screen sections (hero and the card's
-   wrapper) are exactly 100dvh (min-height/max-height, Designer-set), so
-   0dvh–90dvh is grounded in that real measurement, not a guess — it
-   completes within the hero section's own scroll span, comfortably before
-   the card's own 45% IntersectionObserver threshold (which can't fire
-   before the user has scrolled past the full 100dvh hero section and partway
-   into the second one).
+   Card — scroll-driven settle
+   At rest (scroll ≈ 0, right as loading finishes): rotated 30deg on Z and
+   offset -24vw/-16vh. As the user scrolls, it animates back to its
+   untransformed Designer position (0deg, 0, 0). Continuous, tied to
+   absolute scroll position via scroll(root) — NOT the discrete hero/card
+   phase switch above, which still governs the objects.
+   animation-range kept at 0dvh–90dvh (see prior verification: both
+   .container-2.is--full-screen sections are exactly 100dvh) — unchanged by
+   this pass, only the transform recipe changed.
    ========================================================================== */
 
-[data-home="card"] {
-  /* --card-pull is the single number that governs both how far the card is
-     pulled out of flow (margin-top) and how far the settle transform has to
-     travel to land it back at that exact flow position (translateY ends at
-     +pull, not 0 — a plain margin-top with no counter-translate would leave
-     the card permanently elevated instead of "at the position it already
-     occupies today in Designer"). Change this one value to retune the peek. */
-  --card-pull: 15vh;
-  margin-top: calc(-1 * var(--card-pull));
-}
-
 @keyframes card-settle {
-  from { transform: translateY(var(--card-peek-y, 12vh)) rotate(var(--card-peek-r, -5deg)); }
-  to   { transform: translateY(var(--card-pull)) rotate(0deg); }
+  from { transform: rotate(var(--card-peek-r, 30deg)) translate(var(--card-peek-x, -24vw), var(--card-peek-y, -16vh)); }
+  to   { transform: rotate(0deg) translate(0, 0); }
 }
 
 /* Primary: Chrome/Edge/Safari — compositor-driven, no JS involved. */
@@ -308,17 +296,16 @@ body[data-loader-phase="exit"] .loader-counter {
 }
 
 /* Fallback: Firefox — same transform, driven by JS-set custom properties
-   (see loader-footer.js) instead of a compositor scroll timeline. JS
-   interpolates --card-peek-y from 12vh at rest to --card-pull at completion. */
+   (see loader-footer.js) instead of a compositor scroll timeline. */
 @supports not (animation-timeline: scroll()) {
   [data-home="card"] {
-    transform: translateY(var(--card-peek-y, 12vh)) rotate(var(--card-peek-r, -5deg));
+    transform: rotate(var(--card-peek-r, 30deg)) translate(var(--card-peek-x, -24vw), var(--card-peek-y, -16vh));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   [data-home="card"] {
     animation: none;
-    transform: translateY(var(--card-pull)); /* settled — no peek, no rotation */
+    transform: none; /* settled — no offset, no rotation */
   }
 }
