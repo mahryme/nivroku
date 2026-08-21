@@ -15,6 +15,10 @@
 :root {
     --loader-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
     --loader-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    /* Published "easeOutBack" (easings.net) — a single overshoot-and-settle,
+       not a hand-rolled curve. Used only for the loading-phase leg (objects
+       moving between l1-l4) and the per-group entrance pop. */
+    --loader-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .loader-objects {
@@ -34,15 +38,20 @@
            normal values are negative (0vh = on the floor, -40vh = raised 40vh).
            Positive --y means the object hangs below the floor and is
            bottom-cropped — intentional in hero/card, not a bug.
-   No more translate(-50%,-50%) viewport-centre anchor, no more per-phase
-   scale (--ls/--hs/--ks) — each object has one fixed width (--ow, in vw)
-   that holds across every phase.
+   No more translate(-50%,-50%) viewport-centre anchor. Size is Designer's
+   now (a single shared width on .loader-obj, currently 12em) — we don't set
+   width here at all. Where an object still needs to read as a different
+   relative size, a constant `--scale` multiplier (one value per object, not
+   per phase) rides along in the same transform; most objects don't need one
+   and fall back to scale(1).
 
    Three motion legs, three different drive mechanisms:
    1. Loading (l1→l2→l3→l4): a single paused CSS animation per object,
       scrubbed by JS writing --loader-progress (0–100) via a negative
       animation-delay — see obj-load below. Not scroll-driven; this plays out
-      before the page is interactively scrollable anyway.
+      before the page is interactively scrollable anyway. Eased with
+      --loader-ease-bounce (a single overshoot-settle) instead of linear, so
+      each group visibly bounces into its new position as it joins.
    2. Loading → hero (l4→hero): a discrete settle, staggered per object,
       fired the instant the loader finishes (unchanged mechanism from
       Round 3 — a plain CSS transition on data-loader-phase="hero").
@@ -62,7 +71,7 @@
     top: auto; /* cancels Designer's stale top:50% from the old centred anchor */
     right: auto;
     bottom: 0;
-    width: calc(var(--ow) * 1vw);
+    /* width intentionally not set — Designer owns object size now. */
     transform-origin: center;
     opacity: 1;
     pointer-events: none;
@@ -83,16 +92,16 @@
    once phase reaches hero so leg 2's transition can take over cleanly. */
 @keyframes obj-load {
     0% {
-        transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r));
+        transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r)) scale(var(--scale, 1));
     }
     40% {
-        transform: translate(var(--l2x), var(--l2y)) rotate(var(--l2r));
+        transform: translate(var(--l2x), var(--l2y)) rotate(var(--l2r)) scale(var(--scale, 1));
     }
     60% {
-        transform: translate(var(--l3x), var(--l3y)) rotate(var(--l3r));
+        transform: translate(var(--l3x), var(--l3y)) rotate(var(--l3r)) scale(var(--scale, 1));
     }
     100% {
-        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r));
+        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r)) scale(var(--scale, 1));
     }
 }
 
@@ -101,14 +110,16 @@ body:not([data-loader-phase="hero"]) .loader-obj {
        happens while phase is still "loading", just before finish() flips it)
        pushes local time to precisely the animation's end boundary, where the
        default fill:none reports no effect at all (transform: none) instead
-       of holding l4. */
-    animation: obj-load 1s linear paused both;
+       of holding l4. --loader-ease-bounce (not linear) governs interpolation
+       *within* each segment — this is independent of and doesn't break the
+       progress→animation-delay seek, which stays a linear mapping. */
+    animation: obj-load 1s var(--loader-ease-bounce) paused both;
     animation-delay: calc(var(--loader-progress, 0) * -0.01s);
 }
 
 /* Leg 2 — discrete settle onto the hero composition. */
 body[data-loader-phase="hero"] .loader-obj {
-    transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
+    transform: translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--scale, 1));
 }
 
 /* Leg 3 — hero → card, continuous scroll(root), identical range to the
@@ -116,10 +127,10 @@ body[data-loader-phase="hero"] .loader-obj {
    --obj-scroll-x/-y/-r (see loader-footer.js). */
 @keyframes obj-settle {
     from {
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--scale, 1));
     }
     to {
-        transform: translate(var(--kx), var(--ky)) rotate(var(--kr));
+        transform: translate(var(--kx), var(--ky)) rotate(var(--kr)) scale(var(--scale, 1));
     }
 }
 
@@ -138,22 +149,27 @@ body[data-loader-phase="hero"] .loader-obj {
                 var(--obj-scroll-x, var(--hx)),
                 var(--obj-scroll-y, var(--hy))
             )
-            rotate(var(--obj-scroll-r, var(--hr)));
+            rotate(var(--obj-scroll-r, var(--hr)))
+            scale(var(--scale, 1));
         transition: none;
     }
 }
 
-/* Entrance reveal — unchanged from Round 3: lives on the child <img>, kept
-   separate from the wrapper's positional transform above so the two never
-   fight over one `transform`. Reveal thresholds are no longer one object
-   per decode; see the "first appears" column in the coordinate table below
-   and loader-footer.js for the threshold-crossing logic. */
+/* Entrance reveal — lives on the child <img>, kept separate from the
+   wrapper's positional transform above so the two never fight over one
+   `transform`. Reveal thresholds are no longer one object per decode; see
+   the "first appears" column in the coordinate table below and
+   loader-footer.js for the threshold-crossing logic (three groups now, so
+   this is a group of objects popping in together, not a single one).
+   Opacity stays on ease-out (fading past 0/1 isn't meaningful); the scale
+   uses --loader-ease-bounce, and runs a little longer than the opacity fade
+   so the overshoot actually reads before it settles. */
 .loader-obj > img {
     opacity: 0;
     transform: scale(0.86);
     transition:
         opacity 420ms var(--loader-ease-out),
-        transform 420ms var(--loader-ease-out);
+        transform 560ms var(--loader-ease-bounce);
     will-change: opacity, transform;
 }
 
@@ -231,7 +247,12 @@ body[data-loader-phase="exit"] .loader-counter {
    --l1x/y/r, --l2x/y/r, --l3x/y/r, --l4x/y/r = loading keyframes at counter 0/40/60/100
    --hx/--hy/--hr          = hero (discrete settle on loader completion)
    --kx/--ky/--kr           = card (reached via scroll, not a phase)
-   --ow                     = object width in vw, constant across all phases
+   --scale                  = optional, constant across all phases. Omitted
+                              (defaults to 1) unless the object needs to read
+                              as a different relative size than Designer's
+                              shared base width — derived proportionally from
+                              this table's old --ow weights (Figma-derived
+                              relative sizes), not re-measured.
 
    Objects whose first real keyframe is later than l1 (and, for a few,
    later than l2) are marked "not revealed yet" below — those vars are set
@@ -252,7 +273,6 @@ body[data-loader-phase="exit"] .loader-counter {
        then swings to the far-left edge and rotates hard, all during
        loading, before the hero settle. */
     --loader-stagger: 0ms;
-    --ow: 13.9;
     --l1x: 48vw;
     --l1y: -48vh;
     --l1r: 15deg;
@@ -276,7 +296,7 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="2"] {
     /* 044 GARDEN bag — not revealed until 40%; l1 held at l2's values. */
     --loader-stagger: 35ms;
-    --ow: 19;
+    --scale: 1.37;
     --l1x: 44vw;
     --l1y: -52vh;
     --l1r: 0deg;
@@ -300,7 +320,7 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="3"] {
     /* spl — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 70ms;
-    --ow: 15.7;
+    --scale: 1.13;
     --l1x: 68vw;
     --l1y: -20vh;
     --l1r: 0deg;
@@ -324,7 +344,7 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="4"] {
     /* okko-pulls — not revealed until 40%; l1 held at l2's values. */
     --loader-stagger: 105ms;
-    --ow: 18.3;
+    --scale: 1.32;
     --l1x: 28vw;
     --l1y: -28vh;
     --l1r: -15deg;
@@ -348,7 +368,6 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="5"] {
     /* solmar-gum — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 140ms;
-    --ow: 13.9;
     --l1x: 76vw;
     --l1y: -60vh;
     --l1r: 0deg;
@@ -372,7 +391,6 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="6"] {
     /* mhp — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 175ms;
-    --ow: 13.9;
     --l1x: 12vw;
     --l1y: -56vh;
     --l1r: 0deg;
@@ -385,8 +403,8 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 16vw;
     --l4y: -56vh;
     --l4r: 15deg;
-    --hx: -4vw;
-    --hy: 12vh;
+    --hx: -2vw;
+    --hy: 4vh;
     --hr: -15deg;
     --kx: 0vw;
     --ky: -20vh;
@@ -396,7 +414,6 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="7"] {
     /* unico — not revealed until 40%; l1 held at l2's values. */
     --loader-stagger: 210ms;
-    --ow: 14.4;
     --l1x: 48vw;
     --l1y: -28vh;
     --l1r: 15deg;
@@ -420,7 +437,7 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="8"] {
     /* solmar-gummies — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 245ms;
-    --ow: 18.1;
+    --scale: 1.3;
     --l1x: 4vw;
     --l1y: -12vh;
     --l1r: -15deg;
@@ -441,22 +458,17 @@ body[data-loader-phase="exit"] .loader-counter {
     --kr: -15deg;
 }
 
-/* Mobile — no Figma mobile frames exist (still true as of Round 4). This is
-   a real holding pattern, not a measurement: only --ow shrinks, uniformly,
-   so objects don't dominate a narrow viewport. Positions are left at the
-   desktop vw/vh values (they already scale with viewport width/height) —
+/* Mobile — no Figma mobile frames exist (still true as of Round 4), and
+   size is no longer ours to adjust per breakpoint (Designer's shared
+   .loader-obj width covers every viewport now). Positions are left at the
+   desktop vw/vh values — they already scale with viewport width/height, and
    inventing new per-object mobile x/y/r numbers without a design reference
    would be guessing, not measuring. Revisit once mobile frames exist. */
-@media (max-width: 767px) {
-    .loader-obj {
-        width: calc(var(--ow) * 0.6vw);
-    }
-}
 
 @media (prefers-reduced-motion: reduce) {
     .loader-obj {
         animation: none !important;
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--scale, 1));
         transition: opacity 220ms var(--loader-ease-out);
     }
     .loader-obj > img {
@@ -483,7 +495,7 @@ body[data-loader-phase="exit"] .loader-counter {
 @keyframes card-settle {
     from {
         transform: rotate(var(--card-peek-r, 30deg))
-            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -12vh));
+            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -8vh));
     }
     to {
         transform: rotate(0deg) translate(0, 0);
@@ -504,7 +516,7 @@ body[data-loader-phase="exit"] .loader-counter {
 @supports not (animation-timeline: scroll()) {
     [data-home="card"] {
         transform: rotate(var(--card-peek-r, 30deg))
-            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -16vh));
+            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -8vh));
     }
 }
 

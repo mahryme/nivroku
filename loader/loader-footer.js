@@ -1,6 +1,6 @@
 (function () {
-    var FLOOR = 1400,
-        CEILING = 2500,
+    var FLOOR = 2400, // was 1400 — lengthened so the bounce-in per group is
+        CEILING = 3400, // actually visible, not just implied by a fast counter
         BEAT = 180,
         SETTLE_MS = 900; // 600ms transition + 245ms longest stagger + buffer
     var body = document.body;
