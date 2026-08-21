@@ -38,12 +38,21 @@
            normal values are negative (0vh = on the floor, -40vh = raised 40vh).
            Positive --y means the object hangs below the floor and is
            bottom-cropped — intentional in hero/card, not a bug.
-   No more translate(-50%,-50%) viewport-centre anchor. Size is Designer's
-   now (a single shared width on .loader-obj, currently 12em) — we don't set
-   width here at all. Where an object still needs to read as a different
-   relative size, a constant `--scale` multiplier (one value per object, not
-   per phase) rides along in the same transform; most objects don't need one
-   and fall back to scale(1).
+   No more translate(-50%,-50%) viewport-centre anchor.
+
+   Round 5 note: size is back to being ours (--ow, vw-based), reversing the
+   Round 4.1 move to Designer's shared em-based width. Designer's fixed width
+   doesn't scale with viewport — at anything other than 1440px the whole
+   composition read proportionally thinner than Figma. --ow is vw-based so
+   it scales with viewport width the same way position already does; the
+   --scale multiplier that briefly existed to compensate for Designer's
+   uniform base is gone too, since --ow already encodes each object's real
+   relative size directly — keeping both would double it.
+
+   Stacking is no longer DOM order: --depth (static per object, ranked by
+   hero --hy — more bleed below the floor reads as nearer) drives z-index,
+   so overlaps are deliberate instead of arbitrary. Static across phases on
+   purpose — re-stacking mid-scroll as objects re-compose would flicker.
 
    Three motion legs, three different drive mechanisms:
    1. Loading (l1→l2→l3→l4): a single paused CSS animation per object,
@@ -71,7 +80,8 @@
     top: auto; /* cancels Designer's stale top:50% from the old centred anchor */
     right: auto;
     bottom: 0;
-    /* width intentionally not set — Designer owns object size now. */
+    width: calc(var(--ow) * 1vw);
+    z-index: calc(10 + var(--depth, 0));
     transform-origin: center;
     opacity: 1;
     pointer-events: none;
@@ -92,20 +102,16 @@
    once phase reaches hero so leg 2's transition can take over cleanly. */
 @keyframes obj-load {
     0% {
-        transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r))
-            scale(var(--scale, 1));
+        transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r));
     }
     40% {
-        transform: translate(var(--l2x), var(--l2y)) rotate(var(--l2r))
-            scale(var(--scale, 1));
+        transform: translate(var(--l2x), var(--l2y)) rotate(var(--l2r));
     }
     60% {
-        transform: translate(var(--l3x), var(--l3y)) rotate(var(--l3r))
-            scale(var(--scale, 1));
+        transform: translate(var(--l3x), var(--l3y)) rotate(var(--l3r));
     }
     100% {
-        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r))
-            scale(var(--scale, 1));
+        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r));
     }
 }
 
@@ -123,8 +129,7 @@ body:not([data-loader-phase="hero"]) .loader-obj {
 
 /* Leg 2 — discrete settle onto the hero composition. */
 body[data-loader-phase="hero"] .loader-obj {
-    transform: translate(var(--hx), var(--hy)) rotate(var(--hr))
-        scale(var(--scale, 1));
+    transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
 }
 
 /* Leg 3 — hero → card, continuous scroll(root), identical range to the
@@ -132,12 +137,10 @@ body[data-loader-phase="hero"] .loader-obj {
    --obj-scroll-x/-y/-r (see loader-footer.js). */
 @keyframes obj-settle {
     from {
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr))
-            scale(var(--scale, 1));
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
     }
     to {
-        transform: translate(var(--kx), var(--ky)) rotate(var(--kr))
-            scale(var(--scale, 1));
+        transform: translate(var(--kx), var(--ky)) rotate(var(--kr));
     }
 }
 
@@ -156,7 +159,7 @@ body[data-loader-phase="hero"] .loader-obj {
                 var(--obj-scroll-x, var(--hx)),
                 var(--obj-scroll-y, var(--hy))
             )
-            rotate(var(--obj-scroll-r, var(--hr))) scale(var(--scale, 1));
+            rotate(var(--obj-scroll-r, var(--hr)));
         transition: none;
     }
 }
@@ -249,16 +252,16 @@ body[data-loader-phase="exit"] .loader-counter {
 }
 
 /* ==========================================================================
-   Coordinate table — bottom-left system (Round 4, discarded Round 3 entirely)
+   Coordinate table — bottom-left system (Round 4, discarded Round 3 entirely;
+   Round 5 restored --ow-driven width and added --depth — see notes above)
    --l1x/y/r, --l2x/y/r, --l3x/y/r, --l4x/y/r = loading keyframes at counter 0/40/60/100
    --hx/--hy/--hr          = hero (discrete settle on loader completion)
    --kx/--ky/--kr           = card (reached via scroll, not a phase)
-   --scale                  = optional, constant across all phases. Omitted
-                              (defaults to 1) unless the object needs to read
-                              as a different relative size than Designer's
-                              shared base width — derived proportionally from
-                              this table's old --ow weights (Figma-derived
-                              relative sizes), not re-measured.
+   --ow                     = object width in vw, constant across all phases
+   --depth                  = stacking rank, static across all phases; higher
+                              = nearer = higher z-index (10 + depth). Ranked
+                              by hero --hy descending (more bleed below the
+                              floor reads as nearer).
 
    Objects whose first real keyframe is later than l1 (and, for a few,
    later than l2) are marked "not revealed yet" below — those vars are set
@@ -271,7 +274,10 @@ body[data-loader-phase="exit"] .loader-counter {
    when it's actually seen.
 
    Rotation is sign-flipped from Figma (CCW there, CW in CSS) — already
-   applied below. Values rounded to multiples of 4 per Maksym's convention.
+   applied below. Values rounded to multiples of 4 per Maksym's convention,
+   except objects cropped by a viewport edge (currently 1, 3, 6), which are
+   allowed multiples of 2 — 4 costs visible crop accuracy on the one thing
+   that's the whole point of those objects.
    ========================================================================== */
 
 [data-obj="1"] {
@@ -279,6 +285,8 @@ body[data-loader-phase="exit"] .loader-counter {
        then swings to the far-left edge and rotates hard, all during
        loading, before the hero settle. */
     --loader-stagger: 0ms;
+    --ow: 13.9;
+    --depth: 1;
     --l1x: 48vw;
     --l1y: -48vh;
     --l1r: 15deg;
@@ -291,8 +299,8 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: -4vw;
     --l4y: -40vh;
     --l4r: -30deg;
-    --hx: -2vw;
-    --hy: -12vh;
+    --hx: -6vw;
+    --hy: -8vh;
     --hr: -30deg;
     --kx: 12vw;
     --ky: -16vh;
@@ -302,7 +310,8 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="2"] {
     /* 044 GARDEN bag — not revealed until 40%; l1 held at l2's values. */
     --loader-stagger: 35ms;
-    --scale: 1.37;
+    --ow: 19;
+    --depth: 4;
     --l1x: 44vw;
     --l1y: -52vh;
     --l1r: 0deg;
@@ -317,7 +326,7 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4r: 0deg;
     --hx: 56vw;
     --hy: 8vh;
-    --hr: 15deg;
+    --hr: 0deg;
     --kx: 72vw;
     --ky: 12vh;
     --kr: 0deg;
@@ -326,7 +335,8 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="3"] {
     /* spl — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 70ms;
-    --scale: 1.13;
+    --ow: 15.7;
+    --depth: 3;
     --l1x: 68vw;
     --l1y: -20vh;
     --l1r: 0deg;
@@ -350,7 +360,8 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="4"] {
     /* okko-pulls — not revealed until 40%; l1 held at l2's values. */
     --loader-stagger: 105ms;
-    --scale: 1.32;
+    --ow: 18.3;
+    --depth: 6;
     --l1x: 28vw;
     --l1y: -28vh;
     --l1r: -15deg;
@@ -374,6 +385,8 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="5"] {
     /* solmar-gum — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 140ms;
+    --ow: 13.9;
+    --depth: 5;
     --l1x: 76vw;
     --l1y: -60vh;
     --l1r: 0deg;
@@ -389,14 +402,16 @@ body[data-loader-phase="exit"] .loader-counter {
     --hx: 72vw;
     --hy: 12vh;
     --hr: 0deg;
-    --kx: 82vw;
-    --ky: -2vh;
+    --kx: 86vw;
+    --ky: 6vh;
     --kr: 0deg;
 }
 
 [data-obj="6"] {
     /* mhp — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 175ms;
+    --ow: 13.9;
+    --depth: 7;
     --l1x: 12vw;
     --l1y: -56vh;
     --l1r: 0deg;
@@ -410,9 +425,9 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4y: -56vh;
     --l4r: 15deg;
     --hx: -2vw;
-    --hy: 4vh;
+    --hy: 12vh;
     --hr: -15deg;
-    --kx: 8vw;
+    --kx: 0vw;
     --ky: -20vh;
     --kr: 0deg;
 }
@@ -420,6 +435,8 @@ body[data-loader-phase="exit"] .loader-counter {
 [data-obj="7"] {
     /* unico — not revealed until 40%; l1 held at l2's values. */
     --loader-stagger: 210ms;
+    --ow: 14.4;
+    --depth: 2;
     --l1x: 48vw;
     --l1y: -28vh;
     --l1r: 15deg;
@@ -435,15 +452,16 @@ body[data-loader-phase="exit"] .loader-counter {
     --hx: 68vw;
     --hy: 0vh;
     --hr: -15deg;
-    --kx: 70vw;
-    --ky: -12vh;
+    --kx: 74vw;
+    --ky: -16vh;
     --kr: -15deg;
 }
 
 [data-obj="8"] {
     /* solmar-gummies — not revealed until 60%; l1/l2 held at l3's values. */
     --loader-stagger: 245ms;
-    --scale: 1.3;
+    --ow: 18.1;
+    --depth: 8;
     --l1x: 4vw;
     --l1y: -12vh;
     --l1r: -15deg;
@@ -456,26 +474,27 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 0vw;
     --l4y: -12vh;
     --l4r: -15deg;
-    --hx: 20vw;
-    --hy: 12vh;
+    --hx: 24vw;
+    --hy: 20vh;
     --hr: -15deg;
-    --kx: 6vw;
-    --ky: 8vh;
+    --kx: 0vw;
+    --ky: 16vh;
     --kr: -15deg;
 }
 
-/* Mobile — no Figma mobile frames exist (still true as of Round 4), and
-   size is no longer ours to adjust per breakpoint (Designer's shared
-   .loader-obj width covers every viewport now). Positions are left at the
-   desktop vw/vh values — they already scale with viewport width/height, and
-   inventing new per-object mobile x/y/r numbers without a design reference
-   would be guessing, not measuring. Revisit once mobile frames exist. */
+/* Mobile — no Figma mobile frames exist (still true as of Round 5). No
+   separate breakpoint rule needed for size any more: --ow is vw-based, so
+   it scales with viewport width the same way position already does (unlike
+   Round 4.1's Designer em-width, which didn't, and was the actual reason
+   the composition read thinner off 1440px). Positions are still the
+   desktop vw/vh values — inventing new per-object mobile x/y/r numbers
+   without a design reference would be guessing, not measuring. Revisit
+   once mobile frames exist. */
 
 @media (prefers-reduced-motion: reduce) {
     .loader-obj {
         animation: none !important;
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr))
-            scale(var(--scale, 1));
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
         transition: opacity 220ms var(--loader-ease-out);
     }
     .loader-obj > img {
