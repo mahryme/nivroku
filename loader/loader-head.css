@@ -4,269 +4,468 @@
    opacity:0 images, .section AND .header-wrap stay fully visible/interactive.
    That is the safe default.
 
-   Round 2 note: this file was reconciled from the hand-edited version pasted
-   directly into Webflow's head custom code (which had drifted from this repo's
-   v0.1.0 tag — width via --loader-obj-size, .header-wrap folded into the
-   reveal/hide logic, loader-bar/counter layout tweaks). That reconciled base is
-   what Task A's coordinate-table principles and Task B's card motion are
-   applied on top of below. */
+   Round 4 note: objects were rewritten wholesale — bottom-left anchor system
+   instead of viewport-centre, four loading keyframes scrubbed by
+   --loader-progress instead of one static loading composition, and hero→card
+   is now a continuous scroll(root) animation (same mechanism/range as the
+   card itself) instead of a discrete "card" phase. See the coordinate table
+   section below for the full writeup. The card's own animation (further
+   down this file) is untouched this round. */
 
 :root {
-  --loader-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --loader-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --loader-obj-size: clamp(64px, 9vw, 168px);
+    --loader-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --loader-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 .loader-objects {
-  position: fixed;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
 }
 
+/* ==========================================================================
+   Objects — bottom-left anchor system (Round 4)
+
+   Each object's box is anchored to the viewport's bottom-left corner, then
+   moved into place with `transform: translate(--x, --y) rotate(--r)`:
+     --x = left edge, measured rightward from the viewport's left edge (0vw = flush left)
+     --y = bottom edge, measured UPWARD from the viewport's bottom edge, so
+           normal values are negative (0vh = on the floor, -40vh = raised 40vh).
+           Positive --y means the object hangs below the floor and is
+           bottom-cropped — intentional in hero/card, not a bug.
+   No more translate(-50%,-50%) viewport-centre anchor, no more per-phase
+   scale (--ls/--hs/--ks) — each object has one fixed width (--ow, in vw)
+   that holds across every phase.
+
+   Three motion legs, three different drive mechanisms:
+   1. Loading (l1→l2→l3→l4): a single paused CSS animation per object,
+      scrubbed by JS writing --loader-progress (0–100) via a negative
+      animation-delay — see obj-load below. Not scroll-driven; this plays out
+      before the page is interactively scrollable anyway.
+   2. Loading → hero (l4→hero): a discrete settle, staggered per object,
+      fired the instant the loader finishes (unchanged mechanism from
+      Round 3 — a plain CSS transition on data-loader-phase="hero").
+   3. Hero → card: continuous, scroll(root)-driven, same timeline and range
+      (0dvh 90dvh) as the card's own animation further down this file — NOT
+      a phase change, no IntersectionObserver, no stagger. Gated behind
+      .is-post-settle (added by JS ~900ms after entering hero) so leg 3
+      can't start fighting leg 2's transition before it's actually finished
+      settling — a running CSS animation always overrides a transition on
+      the same property regardless of specificity, so without that gate the
+      settle would snap instead of ease.
+   ========================================================================== */
+
 .loader-obj {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  width: var(--loader-obj-size);
-  opacity: 1;
-  transform: translate(-50%, -50%) translate(var(--lx), var(--ly)) rotate(var(--lr)) scale(var(--ls));
-  transition: transform 600ms var(--loader-ease-in-out) var(--loader-stagger, 0ms),
-              opacity 220ms var(--loader-ease-out);
-  pointer-events: none;
-  will-change: transform;
+    position: fixed;
+    left: 0;
+    top: auto; /* cancels Designer's stale top:50% from the old centred anchor */
+    right: auto;
+    bottom: 0;
+    width: calc(var(--ow) * 1vw);
+    transform-origin: center;
+    opacity: 1;
+    pointer-events: none;
+    will-change: transform;
+    transition:
+        transform 600ms var(--loader-ease-in-out) var(--loader-stagger, 0ms),
+        opacity 220ms var(--loader-ease-out);
 }
 
 .loader-obj img {
-  display: block;
-  width: 100%;
-  height: auto;
+    display: block;
+    width: 100%;
+    height: auto;
 }
 
+/* Leg 1 — loading keyframes, scrubbed by real decode/font progress (JS
+   writes --loader-progress; no separate JS animation loop). Stops applying
+   once phase reaches hero so leg 2's transition can take over cleanly. */
+@keyframes obj-load {
+    0% {
+        transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r));
+    }
+    40% {
+        transform: translate(var(--l2x), var(--l2y)) rotate(var(--l2r));
+    }
+    60% {
+        transform: translate(var(--l3x), var(--l3y)) rotate(var(--l3r));
+    }
+    100% {
+        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r));
+    }
+}
+
+body:not([data-loader-phase="hero"]) .loader-obj {
+    /* fill:both — without it, progress hitting exactly 100 (which briefly
+       happens while phase is still "loading", just before finish() flips it)
+       pushes local time to precisely the animation's end boundary, where the
+       default fill:none reports no effect at all (transform: none) instead
+       of holding l4. */
+    animation: obj-load 1s linear paused both;
+    animation-delay: calc(var(--loader-progress, 0) * -0.01s);
+}
+
+/* Leg 2 — discrete settle onto the hero composition. */
 body[data-loader-phase="hero"] .loader-obj {
-  transform: translate(-50%, -50%) translate(var(--hx), var(--hy)) rotate(var(--hr)) scale(var(--hs));
-  transition-duration: 600ms;
+    transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
 }
 
-body[data-loader-phase="card"] .loader-obj {
-  transform: translate(-50%, -50%) translate(var(--kx), var(--ky)) rotate(var(--kr)) scale(var(--ks));
-  transition-duration: 700ms;
+/* Leg 3 — hero → card, continuous scroll(root), identical range to the
+   card. Primary: compositor-driven, no JS. Fallback: Firefox, JS-set
+   --obj-scroll-x/-y/-r (see loader-footer.js). */
+@keyframes obj-settle {
+    from {
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
+    }
+    to {
+        transform: translate(var(--kx), var(--ky)) rotate(var(--kr));
+    }
 }
 
+@supports (animation-timeline: scroll()) {
+    body[data-loader-phase="hero"].is-post-settle .loader-obj {
+        animation: obj-settle linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0dvh 90dvh;
+        transition: none;
+    }
+}
+
+@supports not (animation-timeline: scroll()) {
+    body[data-loader-phase="hero"].is-post-settle .loader-obj {
+        transform: translate(
+                var(--obj-scroll-x, var(--hx)),
+                var(--obj-scroll-y, var(--hy))
+            )
+            rotate(var(--obj-scroll-r, var(--hr)));
+        transition: none;
+    }
+}
+
+/* Entrance reveal — unchanged from Round 3: lives on the child <img>, kept
+   separate from the wrapper's positional transform above so the two never
+   fight over one `transform`. Reveal thresholds are no longer one object
+   per decode; see the "first appears" column in the coordinate table below
+   and loader-footer.js for the threshold-crossing logic. */
 .loader-obj > img {
-  opacity: 0;
-  transform: scale(0.86);
-  transition: opacity 420ms var(--loader-ease-out), transform 420ms var(--loader-ease-out);
-  will-change: opacity, transform;
+    opacity: 0;
+    transform: scale(0.86);
+    transition:
+        opacity 420ms var(--loader-ease-out),
+        transform 420ms var(--loader-ease-out);
+    will-change: opacity, transform;
 }
 
 .loader-obj.is-revealed > img {
-  opacity: 1;
-  transform: scale(1);
+    opacity: 1;
+    transform: scale(1);
 }
 
 .loader-counter {
-  position: fixed;
-  z-index: 3;
-  display: flex;
-  align-items: baseline;
-  opacity: 1;
-  pointer-events: none;
-  transition: opacity 200ms var(--loader-ease-out);
+    position: fixed;
+    z-index: 3;
+    display: flex;
+    align-items: baseline;
+    opacity: 1;
+    pointer-events: none;
+    transition: opacity 200ms var(--loader-ease-out);
 }
 
 body[data-loader-phase="exit"] .loader-counter,
 body[data-loader-phase="hero"] .loader-counter,
 body[data-loader-phase="card"] .loader-counter {
-  opacity: 0;
+    opacity: 0;
 }
 
 [data-loader="bar"] {
-  width: calc(var(--loader-progress, 0) * 1%);
-  height: 1px;
-  overflow: hidden;
-  transition: width 150ms linear;
+    width: calc(var(--loader-progress, 0) * 1%);
+    height: 1px;
+    overflow: hidden;
+    transition: width 150ms linear;
 }
 
 .section,
 .header-wrap {
-  opacity: 1;
-  pointer-events: auto;
-  transition: opacity 300ms var(--loader-ease-out);
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 300ms var(--loader-ease-out);
 }
 
 body[data-loader-phase="loading"] .section,
 body[data-loader-phase="exit"] .section,
 body[data-loader-phase="loading"] .header-wrap,
 body[data-loader-phase="exit"] .header-wrap {
-  opacity: 0;
-  pointer-events: none;
+    opacity: 0;
+    pointer-events: none;
 }
 
 body[data-loader-phase="loading"] .section,
 body[data-loader-phase="exit"] .section,
 body[data-loader-phase="loading"] .header-wrap,
 body[data-loader-phase="exit"] .header-wrap {
-  animation: loader-failsafe-show 0s 5s forwards;
+    animation: loader-failsafe-show 0s 5s forwards;
 }
 @keyframes loader-failsafe-show {
-  to { opacity: 1; pointer-events: auto; }
+    to {
+        opacity: 1;
+        pointer-events: auto;
+    }
 }
 
 body[data-loader-phase="loading"] .loader-objects,
 body[data-loader-phase="loading"] .loader-counter,
 body[data-loader-phase="exit"] .loader-counter {
-  animation: loader-failsafe-hide 0s 5s forwards;
+    animation: loader-failsafe-hide 0s 5s forwards;
 }
 @keyframes loader-failsafe-hide {
-  to { opacity: 0; visibility: hidden; pointer-events: none; }
+    to {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
 }
 
 /* ==========================================================================
-   Coordinate table — one block per object, desktop then its ≤767px override
-   directly beneath.
-   --lx/--ly/--lr/--ls  = loading (cluster, arriving)
-   --hx/--hy/--hr/--hs  = hero (composed around the headline)
-   --kx/--ky/--kr/--ks  = card (composed around the about-card) — UNCHANGED
-     this round; Task A only scoped loading + hero.
+   Coordinate table — bottom-left system (Round 4, discarded Round 3 entirely)
+   --l1x/y/r, --l2x/y/r, --l3x/y/r, --l4x/y/r = loading keyframes at counter 0/40/60/100
+   --hx/--hy/--hr          = hero (discrete settle on loader completion)
+   --kx/--ky/--kr           = card (reached via scroll, not a phase)
+   --ow                     = object width in vw, constant across all phases
 
-   Round-2 principles applied to every object below (see report for the
-   per-object violation each fix addresses):
-   1. Loading position is now 58–65% of the way toward hero position, not a
-      near-center cluster — the set gets fuller, not relocated. Loading scale
-      is ~75% of hero scale so there's still a sense of "arriving" (object 1
-      is the documented exception — see its comment).
-   2. Hero --hy is positive for every object (15–39vh, already true in the
-      deployed version and left alone). Two objects — 1 and 2 — now cross
-      ±50vw so they're deliberately cropped by the viewport edge; the rest
-      stay comfortably inside frame.
-   3. agency-logo (object 1) is the anchor: large and alone at low counts
-      (--ls stays ~1.05, exceeding the general "loading < hero" rule on
-      purpose), calming to a smaller --hs as it recedes toward the widest
-      hero edge position of any object.
+   Objects whose first real keyframe is later than l1 (and, for a few,
+   later than l2) are marked "not revealed yet" below — those vars are set
+   to hold at the object's first real keyframe's values (per the doc: "hold
+   it at its first real keyframe's values and fade opacity in at the
+   threshold"), since @keyframes obj-load needs a real value at every stop
+   for every object regardless of when it actually becomes visible. The
+   wrapper is already correctly positioned before reveal; only the child
+   <img>'s opacity (driven by .is-revealed, see loader-footer.js) controls
+   when it's actually seen.
+
+   Rotation is sign-flipped from Figma (CCW there, CW in CSS) — already
+   applied below. Values rounded to multiples of 4 per Maksym's convention.
    ========================================================================== */
 
-[data-obj="1"] { /* agency-logo — anchor: big alone, recedes to the far edge */
-  --loader-stagger: 0ms;
-  --lx: -36vw; --ly: 16vh; --lr: 0deg; --ls: 1.05;
-  --hx: -56vw; --hy: 27vh; --hr: 0deg; --hs: 0.85;
-  --kx: -30vw; --ky: 22vh; --kr: 0deg; --ks: 1.0;
-}
-@media (max-width: 767px) {
-  [data-obj="1"] {
-    --lx: -21vw; --ly: 11vh; --lr: 0deg; --ls: 0.75;
-    --hx: -34vw; --hy: 18vh; --hr: 0deg; --hs: 0.6;
-    --kx: -14vw; --ky: 14vh; --kr: 0deg; --ks: 0.7;
-  }
-}
-
-[data-obj="2"] { /* 044 GARDEN bag — 2nd edge-cropper */
-  --loader-stagger: 35ms;
-  --lx: 33vw; --ly: 19vh; --lr: -3deg; --ls: 0.86;
-  --hx: 54vw; --hy: 31vh; --hr: -3deg; --hs: 1.15;
-  --kx: 40vw; --ky: 18vh; --kr: -3deg; --ks: 1.15;
-}
-@media (max-width: 767px) {
-  [data-obj="2"] {
-    --lx: 14vw; --ly: 12vh; --lr: -3deg; --ls: 0.6;
-    --hx: 22vw; --hy: 20vh; --hr: -3deg; --hs: 0.8;
-    --kx: 20vw; --ky: 12vh; --kr: -3deg; --ks: 0.8;
-  }
+[data-obj="1"] {
+    /* agency-logo — first appears 0%. Starts mid-screen, drifts left/up,
+       then swings to the far-left edge and rotates hard, all during
+       loading, before the hero settle. */
+    --loader-stagger: 0ms;
+    --ow: 13.9;
+    --l1x: 48vw;
+    --l1y: -48vh;
+    --l1r: 15deg;
+    --l2x: 32vw;
+    --l2y: -56vh;
+    --l2r: 15deg;
+    --l3x: 32vw;
+    --l3y: -56vh;
+    --l3r: 15deg;
+    --l4x: -4vw;
+    --l4y: -40vh;
+    --l4r: -30deg;
+    --hx: -4vw;
+    --hy: -8vh;
+    --hr: -30deg;
+    --kx: 12vw;
+    --ky: -16vh;
+    --kr: 0deg;
 }
 
-[data-obj="3"] { /* spl */
-  --loader-stagger: 70ms;
-  --lx: 24vw; --ly: 15vh; --lr: 4deg; --ls: 0.59;
-  --hx: 39vw; --hy: 24vh; --hr: 4deg; --hs: 0.78;
-  --kx: 38vw; --ky: 13vh; --kr: 4deg; --ks: 0.78;
-}
-@media (max-width: 767px) {
-  [data-obj="3"] {
-    --lx: 7vw;  --ly: 9vh;  --lr: 4deg; --ls: 0.42;
-    --hx: 12vw; --hy: 15vh; --hr: 4deg; --hs: 0.56;
-    --kx: 12vw; --ky: 9vh;  --kr: 4deg; --ks: 0.56;
-  }
-}
-
-[data-obj="4"] { /* okko-pulls */
-  --loader-stagger: 105ms;
-  --lx: 0vw;   --ly: 18vh; --lr: 3deg; --ls: 0.69;
-  --hx: -1vw;  --hy: 28vh; --hr: 3deg; --hs: 0.92;
-  --kx: -24vw; --ky: 28vh; --kr: 3deg; --ks: 0.92;
-}
-@media (max-width: 767px) {
-  [data-obj="4"] {
-    --lx: 0vw;   --ly: 11vh; --lr: 3deg; --ls: 0.47;
-    --hx: 0vw;   --hy: 18vh; --hr: 3deg; --hs: 0.62;
-    --kx: -14vw; --ky: 18vh; --kr: 3deg; --ks: 0.62;
-  }
+[data-obj="2"] {
+    /* 044 GARDEN bag — not revealed until 40%; l1 held at l2's values. */
+    --loader-stagger: 35ms;
+    --ow: 19;
+    --l1x: 44vw;
+    --l1y: -52vh;
+    --l1r: 0deg;
+    --l2x: 44vw;
+    --l2y: -52vh;
+    --l2r: 0deg;
+    --l3x: 48vw;
+    --l3y: -52vh;
+    --l3r: 0deg;
+    --l4x: 36vw;
+    --l4y: -52vh;
+    --l4r: 0deg;
+    --hx: 56vw;
+    --hy: 8vh;
+    --hr: 0deg;
+    --kx: 72vw;
+    --ky: 12vh;
+    --kr: 0deg;
 }
 
-[data-obj="5"] { /* solmar-gum — dropped on mobile */
-  --loader-stagger: 140ms;
-  --lx: 17vw; --ly: 19vh; --lr: -4deg; --ls: 0.59;
-  --hx: 28vw; --hy: 31vh; --hr: -4deg; --hs: 0.78;
-  --kx: 42vw; --ky: 26vh; --kr: -4deg; --ks: 0.78;
-}
-@media (max-width: 767px) {
-  [data-obj="5"] {
-    opacity: 0;
-    pointer-events: none;
-  }
-}
-
-[data-obj="6"] { /* mhp */
-  --loader-stagger: 175ms;
-  --lx: -26vw; --ly: 21vh; --lr: -2deg; --ls: 0.74;
-  --hx: -42vw; --hy: 35vh; --hr: -2deg; --hs: 0.98;
-  --kx: -40vw; --ky: 10vh; --kr: -2deg; --ks: 0.82;
-}
-@media (max-width: 767px) {
-  [data-obj="6"] {
-    --lx: -11vw; --ly: 13vh; --lr: -2deg; --ls: 0.45;
-    --hx: -18vw; --hy: 22vh; --hr: -2deg; --hs: 0.6;
-    --kx: -16vw; --ky: 8vh;  --kr: -2deg; --ks: 0.54;
-  }
+[data-obj="3"] {
+    /* spl — not revealed until 60%; l1/l2 held at l3's values. */
+    --loader-stagger: 70ms;
+    --ow: 15.7;
+    --l1x: 68vw;
+    --l1y: -20vh;
+    --l1r: 0deg;
+    --l2x: 68vw;
+    --l2y: -20vh;
+    --l2r: 0deg;
+    --l3x: 68vw;
+    --l3y: -20vh;
+    --l3r: 0deg;
+    --l4x: 80vw;
+    --l4y: -52vh;
+    --l4r: 0deg;
+    --hx: 88vw;
+    --hy: 4vh;
+    --hr: 0deg;
+    --kx: 84vw;
+    --ky: -16vh;
+    --kr: 0deg;
 }
 
-[data-obj="7"] { /* unico */
-  --loader-stagger: 210ms;
-  --lx: 17vw; --ly: 16vh; --lr: 3deg; --ls: 0.74;
-  --hx: 26vw; --hy: 27vh; --hr: 3deg; --hs: 0.98;
-  --kx: 30vw; --ky: 18vh; --kr: 3deg; --ks: 0.98;
-}
-@media (max-width: 767px) {
-  [data-obj="7"] {
-    --lx: 9vw;  --ly: 11vh; --lr: 3deg; --ls: 0.47;
-    --hx: 14vw; --hy: 18vh; --hr: 3deg; --hs: 0.62;
-    --kx: 16vw; --ky: 12vh; --kr: 3deg; --ks: 0.62;
-  }
+[data-obj="4"] {
+    /* okko-pulls — not revealed until 40%; l1 held at l2's values. */
+    --loader-stagger: 105ms;
+    --ow: 18.3;
+    --l1x: 28vw;
+    --l1y: -28vh;
+    --l1r: -15deg;
+    --l2x: 28vw;
+    --l2y: -28vh;
+    --l2r: -15deg;
+    --l3x: 28vw;
+    --l3y: -16vh;
+    --l3r: -15deg;
+    --l4x: 28vw;
+    --l4y: -16vh;
+    --l4r: -15deg;
+    --hx: 40vw;
+    --hy: 12vh;
+    --hr: 0deg;
+    --kx: 16vw;
+    --ky: 12vh;
+    --kr: 0deg;
 }
 
-[data-obj="8"] { /* solmar-gummies — dropped on mobile */
-  --loader-stagger: 245ms;
-  --lx: -11vw; --ly: 26vh; --lr: -3deg; --ls: 0.92;
-  --hx: -18vw; --hy: 39vh; --hr: -3deg; --hs: 1.22;
-  --kx: -38vw; --ky: 36vh; --kr: -3deg; --ks: 1.22;
+[data-obj="5"] {
+    /* solmar-gum — not revealed until 60%; l1/l2 held at l3's values. */
+    --loader-stagger: 140ms;
+    --ow: 13.9;
+    --l1x: 76vw;
+    --l1y: -60vh;
+    --l1r: 0deg;
+    --l2x: 76vw;
+    --l2y: -60vh;
+    --l2r: 0deg;
+    --l3x: 76vw;
+    --l3y: -60vh;
+    --l3r: 0deg;
+    --l4x: 68vw;
+    --l4y: -24vh;
+    --l4r: 0deg;
+    --hx: 72vw;
+    --hy: 12vh;
+    --hr: 0deg;
+    --kx: 88vw;
+    --ky: 8vh;
+    --kr: 0deg;
 }
+
+[data-obj="6"] {
+    /* mhp — not revealed until 60%; l1/l2 held at l3's values. */
+    --loader-stagger: 175ms;
+    --ow: 13.9;
+    --l1x: 12vw;
+    --l1y: -56vh;
+    --l1r: 0deg;
+    --l2x: 12vw;
+    --l2y: -56vh;
+    --l2r: 0deg;
+    --l3x: 12vw;
+    --l3y: -56vh;
+    --l3r: 0deg;
+    --l4x: 16vw;
+    --l4y: -56vh;
+    --l4r: 15deg;
+    --hx: -4vw;
+    --hy: 12vh;
+    --hr: -15deg;
+    --kx: 0vw;
+    --ky: -20vh;
+    --kr: 0deg;
+}
+
+[data-obj="7"] {
+    /* unico — not revealed until 40%; l1 held at l2's values. */
+    --loader-stagger: 210ms;
+    --ow: 14.4;
+    --l1x: 48vw;
+    --l1y: -28vh;
+    --l1r: 15deg;
+    --l2x: 48vw;
+    --l2y: -28vh;
+    --l2r: 15deg;
+    --l3x: 48vw;
+    --l3y: -20vh;
+    --l3r: 15deg;
+    --l4x: 60vw;
+    --l4y: -52vh;
+    --l4r: 15deg;
+    --hx: 68vw;
+    --hy: 0vh;
+    --hr: -15deg;
+    --kx: 72vw;
+    --ky: -16vh;
+    --kr: -15deg;
+}
+
+[data-obj="8"] {
+    /* solmar-gummies — not revealed until 60%; l1/l2 held at l3's values. */
+    --loader-stagger: 245ms;
+    --ow: 18.1;
+    --l1x: 4vw;
+    --l1y: -12vh;
+    --l1r: -15deg;
+    --l2x: 4vw;
+    --l2y: -12vh;
+    --l2r: -15deg;
+    --l3x: 4vw;
+    --l3y: -12vh;
+    --l3r: -15deg;
+    --l4x: 0vw;
+    --l4y: -12vh;
+    --l4r: -15deg;
+    --hx: 24vw;
+    --hy: 20vh;
+    --hr: -15deg;
+    --kx: 0vw;
+    --ky: 16vh;
+    --kr: -15deg;
+}
+
+/* Mobile — no Figma mobile frames exist (still true as of Round 4). This is
+   a real holding pattern, not a measurement: only --ow shrinks, uniformly,
+   so objects don't dominate a narrow viewport. Positions are left at the
+   desktop vw/vh values (they already scale with viewport width/height) —
+   inventing new per-object mobile x/y/r numbers without a design reference
+   would be guessing, not measuring. Revisit once mobile frames exist. */
 @media (max-width: 767px) {
-  [data-obj="8"] {
-    opacity: 0;
-    pointer-events: none;
-  }
+    .loader-obj {
+        width: calc(var(--ow) * 0.6vw);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loader-obj {
-    transition: opacity 220ms var(--loader-ease-out);
-  }
-  .loader-obj > img {
-    transform: none;
-    transition: opacity 220ms var(--loader-ease-out);
-  }
-  .loader-objects.is-phase-fading .loader-obj {
-    opacity: 0;
-  }
+    .loader-obj {
+        animation: none !important;
+        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
+        transition: opacity 220ms var(--loader-ease-out);
+    }
+    .loader-obj > img {
+        transform: none;
+        transition: opacity 220ms var(--loader-ease-out);
+    }
+    .loader-objects.is-phase-fading .loader-obj {
+        opacity: 0;
+    }
 }
 
 /* ==========================================================================
@@ -282,30 +481,36 @@ body[data-loader-phase="exit"] .loader-counter {
    ========================================================================== */
 
 @keyframes card-settle {
-  from { transform: rotate(var(--card-peek-r, 30deg)) translate(var(--card-peek-x, -24vw), var(--card-peek-y, -16vh)); }
-  to   { transform: rotate(0deg) translate(0, 0); }
+    from {
+        transform: rotate(var(--card-peek-r, 30deg))
+            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -12vh));
+    }
+    to {
+        transform: rotate(0deg) translate(0, 0);
+    }
 }
 
 /* Primary: Chrome/Edge/Safari — compositor-driven, no JS involved. */
 @supports (animation-timeline: scroll()) {
-  [data-home="card"] {
-    animation: card-settle linear both;
-    animation-timeline: scroll(root);
-    animation-range: 0dvh 90dvh;
-  }
+    [data-home="card"] {
+        animation: card-settle linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0dvh 90dvh;
+    }
 }
 
 /* Fallback: Firefox — same transform, driven by JS-set custom properties
    (see loader-footer.js) instead of a compositor scroll timeline. */
 @supports not (animation-timeline: scroll()) {
-  [data-home="card"] {
-    transform: rotate(var(--card-peek-r, 30deg)) translate(var(--card-peek-x, -24vw), var(--card-peek-y, -16vh));
-  }
+    [data-home="card"] {
+        transform: rotate(var(--card-peek-r, 30deg))
+            translate(var(--card-peek-x, -24vw), var(--card-peek-y, -16vh));
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-home="card"] {
-    animation: none;
-    transform: none; /* settled — no offset, no rotation */
-  }
+    [data-home="card"] {
+        animation: none;
+        transform: none; /* settled — no offset, no rotation */
+    }
 }
