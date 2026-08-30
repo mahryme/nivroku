@@ -1,24 +1,70 @@
-/* NIVROKU home page loader — three-phase object system
-   Phase is driven by one attribute: body[data-loader-phase="loading|exit|hero|card"]
-   No attribute at all (JS never ran) = objects sit inert at loading position with
-   opacity:0 images, .section AND .header-wrap stay fully visible/interactive.
-   That is the safe default.
+/* NIVROKU home loader — code owns the loader only (Round 7)
 
-   Round 4 note: objects were rewritten wholesale — bottom-left anchor system
-   instead of viewport-centre, four loading keyframes scrubbed by
-   --loader-progress instead of one static loading composition, and hero→card
-   is now a continuous scroll(root) animation (same mechanism/range as the
-   card itself) instead of a discrete "card" phase. See the coordinate table
-   section below for the full writeup. The card's own animation (further
-   down this file) is untouched this round. */
+   Scope reduction from prior rounds: the loader runs, then hands off via a
+   single class — html.loader-done, added by JS when finished. Everything
+   after that (the hero/card scroll composition) is now a Webflow-native
+   interaction Maksym built by hand, on elements this file and script never
+   reference: #obj-scroll-animation / .home-scroll-animation, any
+   [data-home], the card, the nav, the footer, the swiper. If a change needs
+   to touch any of those, it doesn't belong here.
+
+   .home-loader (position:fixed; inset:0; z-index:12; Designer's base state
+   is display:none) is an opaque cover housing .loader-objects and
+   .loader-counter. Because it fully covers .content-wrap (z-index:2) and
+   the nav inside it, no page content needs its own hide/reveal rules —
+   that per-element opacity toggling (.section, .header-wrap, and the
+   four-value data-loader-phase model) was a whole separate class of bugs
+   in Rounds 4-6 and is gone along with it. Phases reduce from four
+   (loading/exit/hero/card) to one: loading, then done. */
 
 :root {
     --loader-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-    --loader-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
     /* Published "easeOutBack" (easings.net) — a single overshoot-and-settle,
-       not a hand-rolled curve. Used only for the loading-phase leg (objects
-       moving between l1-l4) and the per-group entrance pop. */
+       not a hand-rolled curve. */
     --loader-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ==========================================================================
+   The cover
+   ========================================================================== */
+
+/* Designer's base state is display:none (so the canvas isn't blocked while
+   designing). This overrides it before first paint — this file loads in
+   <head>, so there's no flash of content before the cover appears. */
+html:not(.loader-done) .home-loader {
+    display: block;
+}
+html:not(.loader-done) {
+    overflow: hidden; /* scroll lock while the cover is up */
+}
+
+.home-loader {
+    /* Longhands, not the shorthand — a var() timing-function mixed with
+       other tokens fails to parse in this environment (verified: the whole
+       declaration silently drops, so the fade never actually eased — it
+       just snapped, which end-state checks alone wouldn't have caught). */
+    transition-property: opacity;
+    transition-duration: 320ms;
+    transition-timing-function: var(--loader-ease-out);
+}
+html.loader-done .home-loader {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Failsafe: if JS never runs or throws, the cover clears itself after 5s
+   regardless of script state — a failure degrades to a visible (if
+   abruptly revealed) homepage, never a permanently dead one. Default-on in
+   CSS, turned off by JS, so a script that never loads still resolves. */
+html:not(.loader-done) .home-loader {
+    animation: loader-failsafe 0s linear 5s forwards;
+}
+@keyframes loader-failsafe {
+    to {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
 }
 
 .loader-objects {
@@ -29,49 +75,23 @@
 }
 
 /* ==========================================================================
-   Objects — bottom-left anchor system (Round 4)
+   Objects — bottom-left anchor system
 
    Each object's box is anchored to the viewport's bottom-left corner, then
    moved into place with `transform: translate(--x, --y) rotate(--r)`:
      --x = left edge, measured rightward from the viewport's left edge (0vw = flush left)
      --y = bottom edge, measured UPWARD from the viewport's bottom edge, so
            normal values are negative (0vh = on the floor, -40vh = raised 40vh).
-           Positive --y means the object hangs below the floor and is
-           bottom-cropped — intentional in hero/card, not a bug.
-   No more translate(-50%,-50%) viewport-centre anchor.
+   --ow (object width, vw) and --depth (stacking rank → z-index) are
+   constant per object, unchanged from prior rounds.
 
-   Round 5 note: size is back to being ours (--ow, vw-based), reversing the
-   Round 4.1 move to Designer's shared em-based width. Designer's fixed width
-   doesn't scale with viewport — at anything other than 1440px the whole
-   composition read proportionally thinner than Figma. --ow is vw-based so
-   it scales with viewport width the same way position already does; the
-   --scale multiplier that briefly existed to compensate for Designer's
-   uniform base is gone too, since --ow already encodes each object's real
-   relative size directly — keeping both would double it.
-
-   Stacking is no longer DOM order: --depth (static per object, ranked by
-   hero --hy — more bleed below the floor reads as nearer) drives z-index,
-   so overlaps are deliberate instead of arbitrary. Static across phases on
-   purpose — re-stacking mid-scroll as objects re-compose would flicker.
-
-   Three motion legs, three different drive mechanisms:
-   1. Loading (l1→l2→l3→l4): a single paused CSS animation per object,
-      scrubbed by JS writing --loader-progress (0–100) via a negative
-      animation-delay — see obj-load below. Not scroll-driven; this plays out
-      before the page is interactively scrollable anyway. Eased with
-      --loader-ease-bounce (a single overshoot-settle) instead of linear, so
-      each group visibly bounces into its new position as it joins.
-   2. Loading → hero (l4→hero): a discrete settle, staggered per object,
-      fired the instant the loader finishes (unchanged mechanism from
-      Round 3 — a plain CSS transition on data-loader-phase="hero").
-   3. Hero → card: continuous, scroll(root)-driven, same timeline and range
-      (0dvh 90dvh) as the card's own animation further down this file — NOT
-      a phase change, no IntersectionObserver, no stagger. Gated behind
-      .is-post-settle (added by JS ~900ms after entering hero) so leg 3
-      can't start fighting leg 2's transition before it's actually finished
-      settling — a running CSS animation always overrides a transition on
-      the same property regardless of specificity, so without that gate the
-      settle would snap instead of ease.
+   Only one motion leg remains: the loading keyframes (l1→l2→l3→l4), a
+   single paused CSS animation per object scrubbed by JS writing
+   --loader-progress (0–100) via a negative animation-delay. Once progress
+   reaches 100, the object simply freezes at l4 (fill:both) — there is no
+   hero or card composition in code any more. The whole .home-loader cover
+   fades over the frozen objects; what happens to the page after that is
+   Webflow's Round 7 scroll interaction, not this file's business.
    ========================================================================== */
 
 .loader-obj {
@@ -86,9 +106,19 @@
     opacity: 1;
     pointer-events: none;
     will-change: transform;
-    transition:
-        transform 600ms var(--loader-ease-in-out) var(--loader-stagger, 0ms),
-        opacity 220ms var(--loader-ease-out);
+    /* fill:both holds l4 permanently once progress reaches 100 — this is a
+       final state now, not a transient one waiting for a hero settle to
+       take over. Longhand animation-* properties, not the shorthand: a
+       var() token mixed with other keywords (paused/both) inside the
+       `animation` shorthand fails to parse in this environment — the whole
+       declaration silently drops (verified: animation-name comes back
+       empty). Longhands sidestep the ambiguity entirely. */
+    animation-name: obj-load;
+    animation-duration: 1s;
+    animation-timing-function: var(--loader-ease-bounce);
+    animation-play-state: paused;
+    animation-fill-mode: both;
+    animation-delay: calc(var(--loader-progress, 0) * -0.01s);
 }
 
 .loader-obj img {
@@ -97,9 +127,6 @@
     height: auto;
 }
 
-/* Leg 1 — loading keyframes, scrubbed by real decode/font progress (JS
-   writes --loader-progress; no separate JS animation loop). Stops applying
-   once phase reaches hero so leg 2's transition can take over cleanly. */
 @keyframes obj-load {
     0% {
         transform: translate(var(--l1x), var(--l1y)) rotate(var(--l1r));
@@ -115,70 +142,22 @@
     }
 }
 
-body:not([data-loader-phase="hero"]) .loader-obj {
-    /* fill:both — without it, progress hitting exactly 100 (which briefly
-       happens while phase is still "loading", just before finish() flips it)
-       pushes local time to precisely the animation's end boundary, where the
-       default fill:none reports no effect at all (transform: none) instead
-       of holding l4. --loader-ease-bounce (not linear) governs interpolation
-       *within* each segment — this is independent of and doesn't break the
-       progress→animation-delay seek, which stays a linear mapping. */
-    animation: obj-load 1s var(--loader-ease-bounce) paused both;
-    animation-delay: calc(var(--loader-progress, 0) * -0.01s);
-}
-
-/* Leg 2 — discrete settle onto the hero composition. */
-body[data-loader-phase="hero"] .loader-obj {
-    transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
-}
-
-/* Leg 3 — hero → card, continuous scroll(root), identical range to the
-   card. Primary: compositor-driven, no JS. Fallback: Firefox, JS-set
-   --obj-scroll-x/-y/-r (see loader-footer.js). */
-@keyframes obj-settle {
-    from {
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
-    }
-    to {
-        transform: translate(var(--kx), var(--ky)) rotate(var(--kr));
-    }
-}
-
-@supports (animation-timeline: scroll()) {
-    body[data-loader-phase="hero"].is-post-settle .loader-obj {
-        animation: obj-settle linear both;
-        animation-timeline: scroll(root);
-        animation-range: 0dvh 90dvh;
-        transition: none;
-    }
-}
-
-@supports not (animation-timeline: scroll()) {
-    body[data-loader-phase="hero"].is-post-settle .loader-obj {
-        transform: translate(
-                var(--obj-scroll-x, var(--hx)),
-                var(--obj-scroll-y, var(--hy))
-            )
-            rotate(var(--obj-scroll-r, var(--hr)));
-        transition: none;
-    }
-}
-
 /* Entrance reveal — lives on the child <img>, kept separate from the
-   wrapper's positional transform above so the two never fight over one
-   `transform`. Reveal thresholds are no longer one object per decode; see
-   the "first appears" column in the coordinate table below and
-   loader-footer.js for the threshold-crossing logic (three groups now, so
-   this is a group of objects popping in together, not a single one).
-   Opacity stays on ease-out (fading past 0/1 isn't meaningful); the scale
-   uses --loader-ease-bounce, and runs a little longer than the opacity fade
-   so the overshoot actually reads before it settles. */
+   wrapper's positional animation above so the two never fight over one
+   `transform`. Three reveal groups, not one object per decode; see the
+   "first appears" note in the coordinate table below and loader-footer.js
+   for the threshold-crossing logic. Opacity stays on ease-out (fading past
+   0/1 isn't meaningful); the scale uses the bounce curve and runs a little
+   longer than the opacity fade so the overshoot actually reads. */
 .loader-obj > img {
     opacity: 0;
     transform: scale(0.86);
-    transition:
-        opacity 420ms var(--loader-ease-out),
-        transform 560ms var(--loader-ease-bounce);
+    /* Longhands (see .home-loader above for why) — comma-separated lists
+       still work position-matched across transition-property/-duration/
+       -timing-function, same as the shorthand would have. */
+    transition-property: opacity, transform;
+    transition-duration: 420ms, 560ms;
+    transition-timing-function: var(--loader-ease-out), var(--loader-ease-bounce);
     will-change: opacity, transform;
 }
 
@@ -188,19 +167,9 @@ body[data-loader-phase="hero"] .loader-obj {
 }
 
 .loader-counter {
-    position: fixed;
     z-index: 3;
     display: flex;
-    align-items: baseline;
-    opacity: 1;
-    pointer-events: none;
-    transition: opacity 200ms var(--loader-ease-out);
-}
-
-body[data-loader-phase="exit"] .loader-counter,
-body[data-loader-phase="hero"] .loader-counter,
-body[data-loader-phase="card"] .loader-counter {
-    opacity: 0;
+    align-items: baseline; /* overrides Designer's align-items:center for the "(" number ")" row */
 }
 
 [data-loader="bar"] {
@@ -210,80 +179,28 @@ body[data-loader-phase="card"] .loader-counter {
     transition: width 150ms linear;
 }
 
-.section,
-.header-wrap {
-    opacity: 1;
-    pointer-events: auto;
-    transition: opacity 300ms var(--loader-ease-out);
-}
-
-body[data-loader-phase="loading"] .section,
-body[data-loader-phase="exit"] .section,
-body[data-loader-phase="loading"] .header-wrap,
-body[data-loader-phase="exit"] .header-wrap {
-    opacity: 0;
-    pointer-events: none;
-}
-
-body[data-loader-phase="loading"] .section,
-body[data-loader-phase="exit"] .section,
-body[data-loader-phase="loading"] .header-wrap,
-body[data-loader-phase="exit"] .header-wrap {
-    animation: loader-failsafe-show 0s 5s forwards;
-}
-@keyframes loader-failsafe-show {
-    to {
-        opacity: 1;
-        pointer-events: auto;
-    }
-}
-
-body[data-loader-phase="loading"] .loader-objects,
-body[data-loader-phase="loading"] .loader-counter,
-body[data-loader-phase="exit"] .loader-counter {
-    animation: loader-failsafe-hide 0s 5s forwards;
-}
-@keyframes loader-failsafe-hide {
-    to {
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-    }
-}
-
 /* ==========================================================================
-   Coordinate table — bottom-left system (Round 4, discarded Round 3 entirely;
-   Round 5 restored --ow-driven width and added --depth — see notes above)
-   --l1x/y/r, --l2x/y/r, --l3x/y/r, --l4x/y/r = loading keyframes at counter 0/40/60/100
-   --hx/--hy/--hr          = hero (discrete settle on loader completion)
-   --kx/--ky/--kr           = card (reached via scroll, not a phase)
-   --ow                     = object width in vw, constant across all phases
-   --depth                  = stacking rank, static across all phases; higher
-                              = nearer = higher z-index (10 + depth). Ranked
-                              by hero --hy descending (more bleed below the
-                              floor reads as nearer).
+   Coordinate table — loading keyframes only (l1-l4, --ow, --depth). No more
+   --hx/--hy/--hr or --kx/--ky/--kr: hero and card composition are gone from
+   code, owned entirely by Maksym's Webflow interaction now.
 
    Objects whose first real keyframe is later than l1 (and, for a few,
    later than l2) are marked "not revealed yet" below — those vars are set
-   to hold at the object's first real keyframe's values (per the doc: "hold
-   it at its first real keyframe's values and fade opacity in at the
-   threshold"), since @keyframes obj-load needs a real value at every stop
-   for every object regardless of when it actually becomes visible. The
-   wrapper is already correctly positioned before reveal; only the child
-   <img>'s opacity (driven by .is-revealed, see loader-footer.js) controls
-   when it's actually seen.
+   to hold at the object's first real keyframe's values, since @keyframes
+   obj-load needs a real value at every stop for every object regardless of
+   when it actually becomes visible. The wrapper is already correctly
+   positioned before reveal; only the child <img>'s opacity (driven by
+   .is-revealed, see loader-footer.js) controls when it's actually seen.
 
    Rotation is sign-flipped from Figma (CCW there, CW in CSS) — already
    applied below. Values rounded to multiples of 4 per Maksym's convention,
-   except objects cropped by a viewport edge (currently 1, 3, 6), which are
-   allowed multiples of 2 — 4 costs visible crop accuracy on the one thing
-   that's the whole point of those objects.
+   except objects cropped by a viewport edge (1, 3, 6), allowed multiples
+   of 2.
    ========================================================================== */
 
 [data-obj="1"] {
     /* agency-logo — first appears 0%. Starts mid-screen, drifts left/up,
-       then swings to the far-left edge and rotates hard, all during
-       loading, before the hero settle. */
+       then swings to the far-left edge and rotates hard during loading. */
     --loader-stagger: 0ms;
     --ow: 13.9;
     --depth: 1;
@@ -299,12 +216,6 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: -4vw;
     --l4y: -40vh;
     --l4r: -30deg;
-    --hx: -6vw;
-    --hy: -8vh;
-    --hr: -30deg;
-    --kx: 12vw;
-    --ky: -16vh;
-    --kr: 0deg;
 }
 
 [data-obj="2"] {
@@ -324,12 +235,6 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 36vw;
     --l4y: -52vh;
     --l4r: 0deg;
-    --hx: 56vw;
-    --hy: 8vh;
-    --hr: 0deg;
-    --kx: 72vw;
-    --ky: 12vh;
-    --kr: 0deg;
 }
 
 [data-obj="3"] {
@@ -349,12 +254,6 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 80vw;
     --l4y: -52vh;
     --l4r: 0deg;
-    --hx: 88vw;
-    --hy: 4vh;
-    --hr: 0deg;
-    --kx: 84vw;
-    --ky: -16vh;
-    --kr: 0deg;
 }
 
 [data-obj="4"] {
@@ -374,12 +273,6 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 28vw;
     --l4y: -16vh;
     --l4r: -15deg;
-    --hx: 40vw;
-    --hy: 12vh;
-    --hr: 0deg;
-    --kx: 16vw;
-    --ky: 12vh;
-    --kr: 0deg;
 }
 
 [data-obj="5"] {
@@ -399,12 +292,6 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 68vw;
     --l4y: -24vh;
     --l4r: 0deg;
-    --hx: 72vw;
-    --hy: 12vh;
-    --hr: 0deg;
-    --kx: 86vw;
-    --ky: 6vh;
-    --kr: 0deg;
 }
 
 [data-obj="6"] {
@@ -424,12 +311,6 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 16vw;
     --l4y: -56vh;
     --l4r: 15deg;
-    --hx: -2vw;
-    --hy: 12vh;
-    --hr: -15deg;
-    --kx: 0vw;
-    --ky: -20vh;
-    --kr: 0deg;
 }
 
 [data-obj="7"] {
@@ -449,12 +330,6 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 60vw;
     --l4y: -52vh;
     --l4r: 15deg;
-    --hx: 68vw;
-    --hy: 0vh;
-    --hr: -15deg;
-    --kx: 74vw;
-    --ky: -16vh;
-    --kr: -15deg;
 }
 
 [data-obj="8"] {
@@ -474,81 +349,76 @@ body[data-loader-phase="exit"] .loader-counter {
     --l4x: 0vw;
     --l4y: -12vh;
     --l4r: -15deg;
-    --hx: 24vw;
-    --hy: 20vh;
-    --hr: -15deg;
-    --kx: 0vw;
-    --ky: 16vh;
-    --kr: -15deg;
 }
 
-/* Mobile — no Figma mobile frames exist (still true as of Round 5). No
-   separate breakpoint rule needed for size any more: --ow is vw-based, so
-   it scales with viewport width the same way position already does (unlike
-   Round 4.1's Designer em-width, which didn't, and was the actual reason
-   the composition read thinner off 1440px). Positions are still the
-   desktop vw/vh values — inventing new per-object mobile x/y/r numbers
-   without a design reference would be guessing, not measuring. Revisit
-   once mobile frames exist. */
+/* Mobile — no Figma mobile frames exist. No separate breakpoint rule needed
+   for size: --ow is vw-based, so it scales with viewport width the same
+   way position already does. Revisit once mobile frames exist. */
+
+/* ==========================================================================
+   The handoff: .home-loader dissolves, .obj-animation enters
+   ========================================================================== */
+
+/* One-shot only — the code touches .obj-animation for ~600ms and never
+   again. No standing opacity:0 pre-state (the cover already hides
+   everything; .obj-animation doesn't need pre-hiding of its own), and
+   nothing is left behind once the entrance finishes. Webflow owns
+   everything else about this element.
+
+   Uses `translate`, not `transform: translateY()` — .obj-animation is also
+   driven by a Webflow scroll interaction that writes `transform`.
+   `translate` is an independent CSS property that composes with
+   `transform` instead of overwriting it, so the two systems can't clobber
+   each other regardless of which element that interaction targets.
+
+   The 140ms delay overlaps the two motions: .home-loader fades over 320ms,
+   so starting the entrance 140ms in means the object layer is already
+   rising while the cover is still going — a clean sequential handoff reads
+   as a stall. */
+html.loader-done .obj-animation {
+    /* Longhands, not the shorthand — see the note on .loader-obj above: a
+       var() timing-function mixed with other tokens in `animation` fails
+       to parse here. */
+    animation-name: obj-enter;
+    animation-duration: 620ms;
+    animation-timing-function: var(--loader-ease-bounce);
+    animation-delay: 140ms;
+    animation-fill-mode: both;
+}
+@keyframes obj-enter {
+    from {
+        opacity: 0;
+        translate: 0 12vh;
+    }
+    to {
+        opacity: 1;
+        translate: 0 0;
+    }
+}
 
 @media (prefers-reduced-motion: reduce) {
     .loader-obj {
         animation: none !important;
-        transform: translate(var(--hx), var(--hy)) rotate(var(--hr));
-        transition: opacity 220ms var(--loader-ease-out);
+        transform: translate(var(--l4x), var(--l4y)) rotate(var(--l4r));
     }
     .loader-obj > img {
         transform: none;
-        transition: opacity 220ms var(--loader-ease-out);
+        transition-property: opacity;
+        transition-duration: 220ms;
+        transition-timing-function: var(--loader-ease-out);
     }
-    .loader-objects.is-phase-fading .loader-obj {
-        opacity: 0;
+    html.loader-done .obj-animation {
+        animation-name: obj-enter-reduced;
+        animation-duration: 220ms;
+        animation-timing-function: var(--loader-ease-out);
+        animation-fill-mode: both;
     }
-}
-
-/* ==========================================================================
-   Card — scroll-driven settle
-   At rest (scroll ≈ 0, right as loading finishes): rotated 30deg on Z and
-   offset -24vw/-16vh. As the user scrolls, it animates back to its
-   untransformed Designer position (0deg, 0, 0). Continuous, tied to
-   absolute scroll position via scroll(root) — NOT the discrete hero/card
-   phase switch above, which still governs the objects.
-   animation-range kept at 0dvh–90dvh (see prior verification: both
-   .container-2.is--full-screen sections are exactly 100dvh) — unchanged by
-   this pass, only the transform recipe changed.
-   ========================================================================== */
-
-@keyframes card-settle {
-    from {
-        transform: rotate(var(--card-peek-r, 30deg))
-            translate(var(--card-peek-x, -28vw), var(--card-peek-y, -6vh));
-    }
-    to {
-        transform: rotate(0deg) translate(0, 0);
-    }
-}
-
-/* Primary: Chrome/Edge/Safari — compositor-driven, no JS involved. */
-@supports (animation-timeline: scroll()) {
-    [data-home="card"] {
-        animation: card-settle linear both;
-        animation-timeline: scroll(root);
-        animation-range: 0dvh 90dvh;
-    }
-}
-
-/* Fallback: Firefox — same transform, driven by JS-set custom properties
-   (see loader-footer.js) instead of a compositor scroll timeline. */
-@supports not (animation-timeline: scroll()) {
-    [data-home="card"] {
-        transform: rotate(var(--card-peek-r, 30deg))
-            translate(var(--card-peek-x, -28vw), var(--card-peek-y, -6vh));
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    [data-home="card"] {
-        animation: none;
-        transform: none; /* settled — no offset, no rotation */
+    @keyframes obj-enter-reduced {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
     }
 }

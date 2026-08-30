@@ -1,17 +1,11 @@
 (function () {
-    var FLOOR = 2400, // was 1400 — lengthened so the bounce-in per group is
-        CEILING = 3400, // actually visible, not just implied by a fast counter
-        BEAT = 180,
-        SETTLE_MS = 900; // 600ms transition + 245ms longest stagger + buffer
-    var body = document.body;
+    var FLOOR = 2400, // was 1400 pre-bounce — lengthened so the bounce-in
+        CEILING = 3400, // per group is actually visible, not just implied
+        html = document.documentElement;
     var objects = Array.prototype.slice.call(
         document.querySelectorAll(".loader-obj"),
     );
     var countEl = document.querySelector('[data-loader="count"]');
-    var cardEl = document.querySelector('[data-home="card"]');
-    var reduceMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)",
-    ).matches;
     var start = performance.now();
     var settled = false;
 
@@ -36,34 +30,12 @@
 
     function setProgress(pct) {
         pct = Math.round(pct);
-        // Set on body, not the bar: .loader-bar and .loader-obj are unrelated
-        // branches of the DOM (counter vs. objects layer), and a custom
-        // property set on one element doesn't reach the other — only actual
-        // inheritance from a shared ancestor does. Both consumers (the bar's
-        // width calc() and each object's animation-delay scrub) read it from
-        // here via ordinary inheritance.
-        body.style.setProperty("--loader-progress", pct);
+        // Set on <html>, the shared ancestor of both .loader-bar (inside
+        // .loader-counter) and .loader-obj (inside .loader-objects) — a
+        // custom property set on one doesn't reach an unrelated branch,
+        // only inheritance from a shared ancestor does.
+        html.style.setProperty("--loader-progress", pct);
         if (countEl) countEl.textContent = String(pct);
-    }
-
-    function setPhase(phase) {
-        if (reduceMotion && phase === "hero") {
-            body.classList.add("is-phase-fading");
-            window.setTimeout(function () {
-                body.setAttribute("data-loader-phase", phase);
-                window.setTimeout(function () {
-                    body.classList.remove("is-phase-fading");
-                }, 40);
-            }, 110);
-        } else {
-            body.setAttribute("data-loader-phase", phase);
-        }
-        if (phase === "hero") {
-            window.setTimeout(function () {
-                body.classList.add("is-post-settle");
-                window.dispatchEvent(new Event("scroll")); // nudge the Firefox fallback
-            }, SETTLE_MS);
-        }
     }
 
     function finish() {
@@ -73,101 +45,9 @@
             o.classList.add("is-revealed");
         });
         setProgress(100);
-        setPhase("exit");
-        window.setTimeout(function () {
-            setPhase("hero");
-        }, BEAT);
+        html.classList.add("loader-done");
     }
 
-    // Firefox fallback for the card's scroll-driven settle (see
-    // loader-head.css) — Chrome/Edge/Safari handle it purely in CSS via
-    // animation-timeline: scroll(root) and never enter this branch.
-    // START_* must match the keyframe's `from` defaults in loader-head.css;
-    // all three interpolate down to 0 (rotate/x/y) as progress reaches 1.
-    function initCardScrollFallback() {
-        var START_R = 30, START_X = -28, START_Y = -6;
-        var supportsScrollTimeline =
-            window.CSS &&
-            CSS.supports &&
-            CSS.supports("animation-timeline: scroll()");
-        if (!cardEl || reduceMotion || supportsScrollTimeline) return;
-        var range = window.innerHeight * 0.9; // matches animation-range: 0dvh 90dvh
-        var ticking = false;
-        function update() {
-            ticking = false;
-            var progress = Math.min(1, Math.max(0, window.scrollY / range));
-            var remaining = 1 - progress;
-            cardEl.style.setProperty("--card-peek-r", START_R * remaining + "deg");
-            cardEl.style.setProperty("--card-peek-x", START_X * remaining + "vw");
-            cardEl.style.setProperty("--card-peek-y", START_Y * remaining + "vh");
-        }
-        function onScroll() {
-            if (!ticking) {
-                ticking = true;
-                window.requestAnimationFrame(update);
-            }
-        }
-        window.addEventListener("scroll", onScroll, { passive: true });
-        window.addEventListener("resize", function () {
-            range = window.innerHeight * 0.9;
-            update();
-        });
-        update();
-    }
-    initCardScrollFallback();
-
-    // Firefox fallback for the OBJECTS' hero→card scroll-driven settle (see
-    // loader-head.css's obj-settle rule) — same idea as the card's fallback
-    // above, generalized across all 8 objects. Reads each object's own
-    // --hx/--hy/--hr → --kx/--ky/--kr as the interpolation endpoints
-    // directly from the computed style, so the coordinate table isn't
-    // duplicated here. Inert until .is-post-settle is added (see setPhase).
-    function initObjectsScrollFallback() {
-        var supportsScrollTimeline =
-            window.CSS &&
-            CSS.supports &&
-            CSS.supports("animation-timeline: scroll()");
-        if (reduceMotion || supportsScrollTimeline) return;
-        var range = window.innerHeight * 0.9; // matches animation-range: 0dvh 90dvh
-        var ticking = false;
-        function lerp(a, b, t) {
-            return a + (b - a) * t;
-        }
-        function readVar(el, name) {
-            return parseFloat(getComputedStyle(el).getPropertyValue(name)) || 0;
-        }
-        function update() {
-            ticking = false;
-            if (!body.classList.contains("is-post-settle")) return;
-            var progress = Math.min(1, Math.max(0, window.scrollY / range));
-            objects.forEach(function (obj) {
-                var hx = readVar(obj, "--hx"),
-                    hy = readVar(obj, "--hy"),
-                    hr = readVar(obj, "--hr");
-                var kx = readVar(obj, "--kx"),
-                    ky = readVar(obj, "--ky"),
-                    kr = readVar(obj, "--kr");
-                obj.style.setProperty("--obj-scroll-x", lerp(hx, kx, progress) + "vw");
-                obj.style.setProperty("--obj-scroll-y", lerp(hy, ky, progress) + "vh");
-                obj.style.setProperty("--obj-scroll-r", lerp(hr, kr, progress) + "deg");
-            });
-        }
-        function onScroll() {
-            if (!ticking) {
-                ticking = true;
-                window.requestAnimationFrame(update);
-            }
-        }
-        window.addEventListener("scroll", onScroll, { passive: true });
-        window.addEventListener("resize", function () {
-            range = window.innerHeight * 0.9;
-            update();
-        });
-        update();
-    }
-    initObjectsScrollFallback();
-
-    body.setAttribute("data-loader-phase", "loading");
     var ceilingTimer = window.setTimeout(finish, CEILING);
 
     var fontsReady =
