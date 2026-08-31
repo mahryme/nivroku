@@ -14,19 +14,22 @@ window.Webflow.push(function () {
         item.setAttribute('aria-pressed', String(i === index));
       });
     };
-    show(activeIndex);
+
+    const setActive = (index) => {
+      activeIndex = index;
+      items.forEach((item, i) => item.classList.toggle('is--active', i === index));
+      show(index);
+    };
+
+    setActive(activeIndex);
 
     items.forEach((item, i) => {
-      item.addEventListener('click', () => {
-        activeIndex = i;
-        show(i);
-      });
+      item.addEventListener('click', () => setActive(i));
 
       item.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          activeIndex = i;
-          show(i);
+          setActive(i);
         }
       });
 
