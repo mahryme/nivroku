@@ -17,7 +17,10 @@ window.Webflow.push(function () {
 
     const setActive = (index) => {
       activeIndex = index;
-      items.forEach((item, i) => item.classList.toggle('is--active', i === index));
+      items.forEach((item, i) => {
+        const link = item.querySelector('.client_link');
+        if (link) link.classList.toggle('is--active', i === index);
+      });
       show(index);
     };
 
