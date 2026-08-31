@@ -27,8 +27,6 @@ window.Webflow.push(function () {
     setActive(activeIndex);
 
     items.forEach((item, i) => {
-      item.addEventListener('click', () => setActive(i));
-
       item.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -37,8 +35,10 @@ window.Webflow.push(function () {
       });
 
       if (canHover) {
-        item.addEventListener('mouseenter', () => show(i));
-        item.addEventListener('mouseleave', () => show(activeIndex));
+        item.addEventListener('mouseenter', () => setActive(i));
+        item.addEventListener('mouseleave', () => setActive(0));
+      } else {
+        item.addEventListener('click', () => setActive(i));
       }
     });
   });
